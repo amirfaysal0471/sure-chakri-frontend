@@ -3,34 +3,17 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Menu,
-  X,
-  ChevronDown,
-  Monitor,
-  Zap,
-  BookOpen,
-  Loader2,
-  LayoutGrid,
-} from "lucide-react";
+import { Menu, X, LayoutGrid, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// --- Navigation Config ---
+// --- Navigation Config (Exams now a single link) ---
 const NAV_LINKS = [
   { title: "Home", path: "/" },
-  {
-    title: "Features",
-    path: "#",
-    isDropdown: true,
-    subItems: [
-      { title: "Smart OCR", path: "/features/ocr", icon: Monitor },
-      { title: "AI Survey", path: "/features/survey", icon: Zap },
-      { title: "Context", path: "/features/memory", icon: BookOpen },
-    ],
-  },
-  { title: "Pricing", path: "/pricing" },
+  { title: "Exams", path: "/exams" }, // Dropdown removed
+  { title: "Schedule", path: "/schedule" },
+  { title: "Leaderboard", path: "/leaderboard" },
   { title: "Guide", path: "/docs" },
   { title: "Contact", path: "/contact" },
 ];
@@ -52,52 +35,30 @@ export default function Navbar() {
           <div className="bg-primary/10 p-1.5 rounded-lg border border-primary/20 transition-transform group-hover:scale-105">
             <LayoutGrid className="h-5 w-5 text-primary" />
           </div>
-          <span className="text-lg font-bold tracking-tight">SureChakri</span>
+          <span className="text-lg font-bold tracking-tight">
+            Sohoj Shikkha
+          </span>
         </Link>
 
         {/* Desktop Menu */}
-        <div className="hidden md:flex items-center gap-1 ">
+        <div className="hidden md:flex items-center gap-1">
           {NAV_LINKS.map((link) => (
             <div
               key={link.title}
-              className="relative group flex items-center h-16  "
+              className="relative group flex items-center h-16"
             >
-              {link.isDropdown ? (
-                <>
-                  <button className="px-3 py-2 text-md font-medium text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
-                    {link.title}
-                    <ChevronDown
-                      size={14}
-                      className="group-hover:rotate-180 transition-transform duration-200 "
-                    />
-                  </button>
-                  {/* Dropdown UI */}
-                  <div className="absolute top-[60px] left-0 w-56 bg-popover border border-border rounded-xl shadow-xl p-2 opacity-0 invisible translate-y-2 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200 z-50">
-                    {link.subItems?.map((sub) => (
-                      <Link
-                        key={sub.title}
-                        href={sub.path}
-                        className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
-                      >
-                        <sub.icon size={16} className="text-muted-foreground" />
-                        <span className="font-medium">{sub.title}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <Link
-                  href={link.path}
-                  className={cn(
-                    "px-3 py-2 text-md font-medium transition-colors",
-                    pathname === link.path
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {link.title}
-                </Link>
-              )}
+              {/* Only rendering simple links now as per request */}
+              <Link
+                href={link.path}
+                className={cn(
+                  "px-3 py-2 text-md font-medium transition-colors",
+                  pathname === link.path
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {link.title}
+              </Link>
             </div>
           ))}
         </div>
@@ -146,7 +107,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* --- Floating Mobile Menu (Agger Design) --- */}
+      {/* --- Floating Mobile Menu --- */}
       {isOpen && (
         <div className="absolute top-16 right-4 w-[280px] bg-background border border-border rounded-2xl shadow-2xl p-4 flex flex-col z-50 md:hidden animate-in fade-in slide-in-from-top-2 duration-200">
           <nav className="flex flex-col space-y-1">
@@ -167,7 +128,7 @@ export default function Navbar() {
           </nav>
           <div className="h-px bg-border my-4" />
           <Button className="w-full rounded-xl py-5 font-bold text-sm shadow-md">
-            Join SureChakri
+            Join Sohoj Shikkha
           </Button>
         </div>
       )}
