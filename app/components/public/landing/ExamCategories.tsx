@@ -122,10 +122,8 @@ export default function ExamCategories() {
         {/* --- Header Section --- */}
         <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
           <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-            জনপ্রিয় ক্যাটাগরিগুলো <br className="hidden md:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600">
-              ঘুরে দেখুন
-            </span>
+            Popular Categories
+            <br className="hidden md:block" />
           </h2>
           <p className="text-lg text-muted-foreground">
             আপনার লক্ষ্যের ওপর ভিত্তি করে প্রস্তুতি নিন। আমাদের এক্সাম লাইব্রেরি

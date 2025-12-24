@@ -3,18 +3,40 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, LayoutGrid, Loader2 } from "lucide-react";
+import {
+  Menu,
+  X,
+  LayoutGrid,
+  Loader2,
+  LogOut,
+  User as UserIcon,
+} from "lucide-react";
+// 1. signOut ইম্পোর্ট করুন
+import { useSession, signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { LoginModal } from "@/app/components/auth/login-modal";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-// --- Navigation Config (Exams now a single link) ---
+// 2. Dropdown কম্পোনেন্টগুলো ইম্পোর্ট করুন
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+// --- Navigation Config ---
 const NAV_LINKS = [
   { title: "Home", path: "/" },
-  { title: "Exams", path: "/exams" }, // Dropdown removed
+  { title: "Exams", path: "/exams" },
   { title: "Schedule", path: "/schedule" },
   { title: "Leaderboard", path: "/leaderboard" },
   { title: "Guide", path: "/docs" },
+  { title: "Pricing", path: "/pricing" },
   { title: "Contact", path: "/contact" },
 ];
 
@@ -22,10 +44,12 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
 
+  const { data: session, status } = useSession();
+  const user = session?.user;
+  const isLoading = status === "loading";
+
   // Close menu on route change
   useEffect(() => setIsOpen(false), [pathname]);
-
-  const { user, isLoading } = { user: null, isLoading: false }; // Demo Auth
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -47,7 +71,6 @@ export default function Navbar() {
               key={link.title}
               className="relative group flex items-center h-16"
             >
-              {/* Only rendering simple links now as per request */}
               <Link
                 href={link.path}
                 className={cn(
@@ -72,26 +95,62 @@ export default function Navbar() {
                 size={18}
               />
             ) : user ? (
-              <Link
-                href="/dashboard"
-                className="h-9 w-9 rounded-full bg-accent border border-border overflow-hidden hover:opacity-80 transition-opacity"
-              />
+              // --- 3. Desktop Dropdown Menu ---
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="relative h-10 w-10 rounded-full cursor-pointer"
+                  >
+                    <Avatar className="h-9 w-9 border border-border">
+                      <AvatarImage
+                        src={user.image || "https://github.com/shadcn.png"}
+                        alt={user.name || "User"}
+                      />
+                      <AvatarFallback>
+                        {user.name?.charAt(0) || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">
+                        {user.name}
+                      </p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user.email}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard" className="cursor-pointer">
+                      <LayoutGrid className="mr-2 h-4 w-4" />
+                      <span>Dashboard</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-red-600 cursor-pointer focus:text-red-600"
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-md font-semibold"
-                >
-                  <Link href="/login">Log in</Link>
-                </Button>
+              // --- Join Now Button ---
+              <LoginModal>
                 <Button
                   size="sm"
-                  className="rounded-full px-5 font-semibold shadow-sm cursor-pointer text-md"
+                  className="rounded-full px-5 font-semibold shadow-sm cursor-pointer text-md transition-all hover:scale-105"
                 >
                   Join Now
                 </Button>
-              </>
+              </LoginModal>
             )}
           </div>
 
@@ -126,10 +185,61 @@ export default function Navbar() {
               </Link>
             ))}
           </nav>
+
           <div className="h-px bg-border my-4" />
-          <Button className="w-full rounded-xl py-5 font-bold text-sm shadow-md">
-            Join Sohoj Shikkha
-          </Button>
+
+          {/* Mobile Actions */}
+          <div className="flex flex-col gap-3">
+            {user ? (
+              // --- 4. Mobile Dashboard with Profile Info ---
+              <div className="space-y-3">
+                {/* User Info Header */}
+                <div className="flex items-center gap-3 px-2 py-2 bg-muted/50 rounded-xl">
+                  <Avatar className="h-10 w-10 border border-border">
+                    <AvatarImage
+                      src={user.image || "https://github.com/shadcn.png"}
+                      alt={user.name || "User"}
+                    />
+                    <AvatarFallback>
+                      {user.name?.charAt(0) || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold truncate max-w-[150px]">
+                      {user.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                      {user.email}
+                    </span>
+                  </div>
+                </div>
+
+                <Link href="/dashboard" className="block">
+                  <Button
+                    className="w-full justify-start gap-2"
+                    variant="default"
+                  >
+                    <LayoutGrid size={18} /> Dashboard
+                  </Button>
+                </Link>
+
+                {/* Mobile Logout Button */}
+                <Button
+                  className="w-full justify-start gap-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                  variant="outline"
+                  onClick={() => signOut({ callbackUrl: "/" })}
+                >
+                  <LogOut size={18} /> Log out
+                </Button>
+              </div>
+            ) : (
+              <LoginModal>
+                <Button className="w-full rounded-xl py-5 font-bold text-sm shadow-md">
+                  Join Sohoj Shikkha
+                </Button>
+              </LoginModal>
+            )}
+          </div>
         </div>
       )}
     </nav>

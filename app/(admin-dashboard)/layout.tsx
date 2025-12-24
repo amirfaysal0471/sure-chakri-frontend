@@ -3,6 +3,7 @@
 import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react"; // 1. Session & SignOut Import
 import {
   LayoutDashboard,
   Users,
@@ -14,6 +15,7 @@ import {
   Menu,
   LogOut,
   Search,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,10 +27,11 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // 2. Avatar Import
 
 const ADMIN_NAV = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
-  { label: "User Management", href: "/admin/users", icon: Users },
+  { label: "User Management", href: "/admin-dashboard/users", icon: Users },
   { label: "Job Postings", href: "/admin/jobs", icon: Briefcase },
   { label: "Verification", href: "/admin/verification", icon: ShieldCheck },
   { label: "System Reports", href: "/admin/reports", icon: BarChart3 },
@@ -37,12 +40,15 @@ const ADMIN_NAV = [
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  // 3. Fetch Admin Session
+  const { data: session, status } = useSession();
+  const user = session?.user;
 
   return (
     <div className="flex min-h-screen bg-background text-foreground font-sans antialiased">
       {/* --- SIDEBAR --- */}
       <aside className="hidden lg:flex w-64 flex-col bg-muted/30 border-r sticky top-0 h-screen z-50">
-        <div className="flex h-16 items-center px-6 border-b bg-background">
+        <div className="flex h-16 items-center px-6 border-b bg-background shrink-0">
           <Link
             href="/admin"
             className="flex items-center gap-2 font-black text-lg tracking-tighter uppercase"
@@ -78,14 +84,51 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
+        {/* --- 4. ADMIN PROFILE & LOGOUT SECTION --- */}
         <div className="p-4 border-t bg-background">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive"
-          >
-            <LogOut size={16} /> Sign Out
-          </Button>
+          {status === "loading" ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="animate-spin text-muted-foreground" />
+            </div>
+          ) : user ? (
+            <div className="flex flex-col gap-4">
+              {/* Profile Info */}
+              <div className="flex items-center gap-3">
+                <Avatar className="size-9 border border-border">
+                  <AvatarImage
+                    src={user.image || ""}
+                    alt={user.name || "Admin"}
+                  />
+                  <AvatarFallback>{user.name?.[0] || "A"}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-sm font-semibold truncate text-foreground">
+                    {user.name}
+                  </span>
+                  <span
+                    className="text-xs text-muted-foreground truncate"
+                    title={user.email || ""}
+                  >
+                    {user.email}
+                  </span>
+                </div>
+              </div>
+
+              {/* Logout Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100"
+                onClick={() => signOut({ callbackUrl: "/" })}
+              >
+                <LogOut size={16} /> Sign Out
+              </Button>
+            </div>
+          ) : (
+            <div className="text-sm text-center text-muted-foreground">
+              Admin Session Error
+            </div>
+          )}
         </div>
       </aside>
 
@@ -93,7 +136,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/95 backdrop-blur px-4 md:px-8">
           <div className="flex items-center gap-4 flex-1">
-            <MobileAdminMenu pathname={pathname} />
+            <MobileAdminMenu pathname={pathname} user={user} />
             <div className="relative max-w-sm w-full hidden md:block">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -113,8 +156,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <Bell size={18} />
               <span className="absolute top-0 right-0 size-2 bg-destructive rounded-full border-2 border-background" />
             </Button>
-            <div className="size-9 rounded-full bg-primary/10 border flex items-center justify-center font-bold text-xs">
-              AD
+
+            {/* Header Avatar Display */}
+            <div className="size-9 rounded-full border flex items-center justify-center font-bold text-xs overflow-hidden">
+              <Avatar className="size-full">
+                <AvatarImage src={user?.image || ""} />
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  AD
+                </AvatarFallback>
+              </Avatar>
             </div>
           </div>
         </header>
@@ -127,7 +177,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   );
 }
 
-function MobileAdminMenu({ pathname }: { pathname: string }) {
+function MobileAdminMenu({ pathname, user }: { pathname: string; user: any }) {
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -135,11 +185,11 @@ function MobileAdminMenu({ pathname }: { pathname: string }) {
           <Menu className="size-5" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-72 p-0">
+      <SheetContent side="left" className="w-72 p-0 flex flex-col">
         <SheetHeader className="p-6 border-b text-left text-primary font-bold">
           <SheetTitle>Admin Control</SheetTitle>
         </SheetHeader>
-        <div className="p-4 space-y-1">
+        <div className="p-4 space-y-1 flex-1">
           {ADMIN_NAV.map((item) => (
             <Link
               key={item.href}
@@ -155,6 +205,33 @@ function MobileAdminMenu({ pathname }: { pathname: string }) {
             </Link>
           ))}
         </div>
+
+        {/* Mobile Profile Footer */}
+        {user && (
+          <div className="p-4 border-t bg-muted/20 mt-auto">
+            <div className="flex items-center gap-3 mb-4">
+              <Avatar className="size-9 border">
+                <AvatarImage src={user.image} />
+                <AvatarFallback>{user.name?.[0]}</AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-sm font-semibold truncate">
+                  {user.name}
+                </span>
+                <span className="text-xs text-muted-foreground truncate">
+                  {user.email}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              className="w-full text-red-600 border-red-100 hover:bg-red-50"
+              onClick={() => signOut({ callbackUrl: "/" })}
+            >
+              <LogOut size={16} className="mr-2" /> Sign Out
+            </Button>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

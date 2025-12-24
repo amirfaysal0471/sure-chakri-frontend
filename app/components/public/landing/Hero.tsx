@@ -25,8 +25,8 @@ export default function HeroSection() {
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
             {/* Trust Badge */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-muted/50 backdrop-blur-sm text-sm font-medium text-muted-foreground">
-              <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-              Live: 46th BCS Model Test Ongoing
+              <span className="flex h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
+              Live: 50th BCS Model Test Ongoing
             </div>
 
             {/* Headline */}
@@ -39,10 +39,8 @@ export default function HeroSection() {
 
             {/* Subtext */}
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-              বাংলাদেশের একমাত্র প্ল্যাটফর্ম যেখানে{" "}
-              <strong>Strict Timing</strong> এবং{" "}
-              <strong>Negative Marking</strong> আপনাকে আসল যুদ্ধের জন্য প্রস্তুত
-              করবে।
+              স্মার্ট এক্সাম সিস্টেমের মাধ্যমে নিজের ভুলগুলো শুধরে নিন এবং
+              সাফল্যের পথে এক ধাপ এগিয়ে থাকুন।
             </p>
 
             {/* CTA Buttons */}
