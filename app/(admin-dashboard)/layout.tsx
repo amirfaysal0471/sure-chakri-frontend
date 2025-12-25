@@ -1,22 +1,31 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession, signOut } from "next-auth/react"; // 1. Session & SignOut Import
+import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard,
   Users,
   Briefcase,
   ShieldCheck,
-  BarChart3,
   Settings,
   Bell,
   Menu,
   LogOut,
   Search,
   Loader2,
+  ChevronDown,
+  Clock,
+  CheckCircle,
+  XCircle,
+  BookOpen,
+  List,
+  Plus,
+  Tags,
+  type LucideIcon,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -25,28 +34,117 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // 2. Avatar Import
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 
-const ADMIN_NAV = [
+// --- Types ---
+
+interface NavChild {
+  label: string;
+  href: string;
+  icon?: LucideIcon;
+}
+
+interface NavItem {
+  label: string;
+  href?: string;
+  icon: LucideIcon;
+  isDropdown?: boolean;
+  children?: NavChild[];
+}
+
+interface AdminLayoutProps {
+  children: ReactNode;
+}
+
+interface UserProfile {
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+}
+
+// --- Configuration ---
+
+const ADMIN_NAV: NavItem[] = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard },
   { label: "User Management", href: "/admin-dashboard/users", icon: Users },
-  { label: "Job Postings", href: "/admin/jobs", icon: Briefcase },
-  { label: "Verification", href: "/admin/verification", icon: ShieldCheck },
-  { label: "System Reports", href: "/admin/reports", icon: BarChart3 },
+  {
+    label: "Exam Categories",
+    href: "/admin-dashboard/exam-categories",
+    icon: Briefcase,
+  },
+  {
+    label: "Exams",
+    icon: ShieldCheck,
+    isDropdown: true,
+    children: [
+      { label: "Create-Exams", href: "/admin-dashboard/exams", icon: Clock },
+      {
+        label: "Approved List",
+        href: "/admin/verification/approved",
+        icon: CheckCircle,
+      },
+      {
+        label: "Rejected List",
+        href: "/admin/verification/rejected",
+        icon: XCircle,
+      },
+    ],
+  },
+  {
+    label: "Question Bank",
+    icon: BookOpen,
+    isDropdown: true,
+    children: [
+      {
+        label: "Categories",
+        href: "/admin-dashboard/question-bank-categories",
+        icon: Tags,
+      },
+      {
+        label: "Add Question",
+        href: "/admin-dashboard/question-bank/create",
+        icon: Plus,
+      },
+      { label: "All Questions", href: "/admin/question-bank/list", icon: List },
+    ],
+  },
   { label: "Settings", href: "/admin/settings", icon: Settings },
-] as const;
+];
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+// --- Helpers ---
+
+const getInitialDropdownState = (pathname: string): Record<string, boolean> => {
+  const initialState: Record<string, boolean> = {};
+  ADMIN_NAV.forEach((item) => {
+    if (item.isDropdown && item.children) {
+      initialState[item.label] = item.children.some(
+        (child) => pathname === child.href
+      );
+    }
+  });
+  return initialState;
+};
+
+// --- Components ---
+
+export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname();
-  // 3. Fetch Admin Session
   const { data: session, status } = useSession();
   const user = session?.user;
 
+  const [openDropdowns, setOpenDropdowns] = useState<Record<string, boolean>>(
+    () => getInitialDropdownState(pathname)
+  );
+
+  const toggleDropdown = (label: string) => {
+    setOpenDropdowns((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
   return (
     <div className="flex min-h-screen bg-background text-foreground font-sans antialiased">
-      {/* --- SIDEBAR --- */}
+      {/* Sidebar (Desktop) */}
       <aside className="hidden lg:flex w-64 flex-col bg-muted/30 border-r sticky top-0 h-screen z-50">
         <div className="flex h-16 items-center px-6 border-b bg-background shrink-0">
           <Link
@@ -64,14 +162,66 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <p className="text-[10px] font-bold text-muted-foreground uppercase px-3 mb-2 tracking-widest">
             Main Menu
           </p>
+
           {ADMIN_NAV.map((item) => {
+            if (item.isDropdown) {
+              const isOpen = openDropdowns[item.label];
+              const isParentActive = item.children?.some(
+                (child) => pathname === child.href
+              );
+
+              return (
+                <div key={item.label} className="space-y-1">
+                  <button
+                    onClick={() => toggleDropdown(item.label)}
+                    className={cn(
+                      "flex items-center justify-between w-full px-3 py-2 rounded-md text-sm font-medium transition-all text-muted-foreground hover:bg-muted hover:text-foreground",
+                      isParentActive && "text-foreground bg-muted/50"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <item.icon size={18} />
+                      {item.label}
+                    </div>
+                    <ChevronDown
+                      size={14}
+                      className={cn(
+                        "transition-transform duration-200",
+                        isOpen && "rotate-180"
+                      )}
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div className="ml-9 space-y-1 animate-in fade-in slide-in-from-left-2">
+                      {item.children?.map((subItem) => (
+                        <Link
+                          key={subItem.href}
+                          href={subItem.href}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-md text-xs font-medium transition-colors",
+                            pathname === subItem.href
+                              ? "text-primary bg-primary/10"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          )}
+                        >
+                          {subItem.icon && <subItem.icon size={14} />}
+                          {subItem.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             const isActive = pathname === item.href;
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={item.href!}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all group",
+                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all",
                   isActive
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -84,7 +234,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        {/* --- 4. ADMIN PROFILE & LOGOUT SECTION --- */}
+        {/* Profile Section */}
         <div className="p-4 border-t bg-background">
           {status === "loading" ? (
             <div className="flex justify-center py-4">
@@ -92,7 +242,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           ) : user ? (
             <div className="flex flex-col gap-4">
-              {/* Profile Info */}
               <div className="flex items-center gap-3">
                 <Avatar className="size-9 border border-border">
                   <AvatarImage
@@ -105,16 +254,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   <span className="text-sm font-semibold truncate text-foreground">
                     {user.name}
                   </span>
-                  <span
-                    className="text-xs text-muted-foreground truncate"
-                    title={user.email || ""}
-                  >
+                  <span className="text-xs text-muted-foreground truncate">
                     {user.email}
                   </span>
                 </div>
               </div>
-
-              {/* Logout Button */}
               <Button
                 variant="outline"
                 size="sm"
@@ -126,13 +270,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           ) : (
             <div className="text-sm text-center text-muted-foreground">
-              Admin Session Error
+              Session Error
             </div>
           )}
         </div>
       </aside>
 
-      {/* --- MAIN --- */}
+      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/95 backdrop-blur px-4 md:px-8">
           <div className="flex items-center gap-4 flex-1">
@@ -141,12 +285,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search users, jobs, logs..."
+                placeholder="Search..."
                 className="pl-9 h-9 bg-muted/50 border-none focus-visible:ring-1"
               />
             </div>
           </div>
-
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
@@ -156,20 +299,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <Bell size={18} />
               <span className="absolute top-0 right-0 size-2 bg-destructive rounded-full border-2 border-background" />
             </Button>
-
-            {/* Header Avatar Display */}
-            <div className="size-9 rounded-full border flex items-center justify-center font-bold text-xs overflow-hidden">
-              <Avatar className="size-full">
-                <AvatarImage src={user?.image || ""} />
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  AD
-                </AvatarFallback>
-              </Avatar>
-            </div>
+            <Avatar className="size-9 border">
+              <AvatarImage src={user?.image || ""} />
+              <AvatarFallback>AD</AvatarFallback>
+            </Avatar>
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-8 lg:p-10 max-w-7xl mx-auto w-full animate-in fade-in slide-in-from-top-2 duration-500">
+        <main className="flex-1 p-4 md:p-8 lg:p-10 max-w-7xl mx-auto w-full">
           {children}
         </main>
       </div>
@@ -177,55 +314,95 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   );
 }
 
-function MobileAdminMenu({ pathname, user }: { pathname: string; user: any }) {
+function MobileAdminMenu({
+  pathname,
+  user,
+}: {
+  pathname: string;
+  user: UserProfile | undefined;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [openDropdowns, setOpenDropdowns] = useState<Record<string, boolean>>(
+    () => getInitialDropdownState(pathname)
+  );
+
+  const toggleDropdown = (label: string) => {
+    setOpenDropdowns((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
   return (
-    <Sheet>
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="icon" className="lg:hidden">
           <Menu className="size-5" />
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-72 p-0 flex flex-col">
-        <SheetHeader className="p-6 border-b text-left text-primary font-bold">
-          <SheetTitle>Admin Control</SheetTitle>
+        <SheetHeader className="p-6 border-b text-left">
+          <SheetTitle className="text-primary">Admin Control</SheetTitle>
         </SheetHeader>
-        <div className="p-4 space-y-1 flex-1">
-          {ADMIN_NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 p-3 rounded-md text-sm font-medium",
-                pathname === item.href
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              )}
-            >
-              <item.icon size={18} /> {item.label}
-            </Link>
-          ))}
-        </div>
-
-        {/* Mobile Profile Footer */}
-        {user && (
-          <div className="p-4 border-t bg-muted/20 mt-auto">
-            <div className="flex items-center gap-3 mb-4">
-              <Avatar className="size-9 border">
-                <AvatarImage src={user.image} />
-                <AvatarFallback>{user.name?.[0]}</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col overflow-hidden">
-                <span className="text-sm font-semibold truncate">
-                  {user.name}
-                </span>
-                <span className="text-xs text-muted-foreground truncate">
-                  {user.email}
-                </span>
+        <div className="p-4 space-y-1 flex-1 overflow-y-auto">
+          {ADMIN_NAV.map((item) =>
+            item.isDropdown ? (
+              <div key={item.label} className="space-y-1">
+                <button
+                  onClick={() => toggleDropdown(item.label)}
+                  className="flex items-center justify-between w-full p-3 rounded-md text-sm font-medium hover:bg-muted"
+                >
+                  <div className="flex items-center gap-3">
+                    <item.icon size={18} /> {item.label}
+                  </div>
+                  <ChevronDown
+                    size={14}
+                    className={cn(
+                      "transition-transform duration-200",
+                      openDropdowns[item.label] && "rotate-180"
+                    )}
+                  />
+                </button>
+                {openDropdowns[item.label] && (
+                  <div className="ml-9 space-y-1 animate-in fade-in slide-in-from-left-2">
+                    {item.children?.map((sub) => (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        onClick={() => setIsOpen(false)}
+                        className={cn(
+                          "flex items-center gap-2 p-2 rounded-md text-xs transition-colors",
+                          pathname === sub.href
+                            ? "text-primary bg-primary/10"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {sub.icon && <sub.icon size={14} />}
+                        {sub.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              <Link
+                key={item.href}
+                href={item.href!}
+                onClick={() => setIsOpen(false)}
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-md text-sm font-medium transition-colors",
+                  pathname === item.href
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted"
+                )}
+              >
+                <item.icon size={18} /> {item.label}
+              </Link>
+            )
+          )}
+        </div>
+        {user && (
+          <div className="p-4 border-t bg-muted/20">
             <Button
               variant="outline"
-              className="w-full text-red-600 border-red-100 hover:bg-red-50"
+              className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
               onClick={() => signOut({ callbackUrl: "/" })}
             >
               <LogOut size={16} className="mr-2" /> Sign Out

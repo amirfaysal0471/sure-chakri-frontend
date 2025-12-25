@@ -6,6 +6,9 @@ import "./globals.css";
 import { AuthProvider } from "@/app/components/providers/auth-provider";
 import { QueryProvider } from "@/app/components/providers/query-provider";
 
+// 2. Toaster (Sonner) ইম্পোর্ট করুন
+import { Toaster } from "@/components/ui/sonner";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -31,10 +34,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* 2. Nesting: AuthProvider -> QueryProvider -> Children */}
+        {/* Nesting: AuthProvider -> QueryProvider -> Children */}
         <AuthProvider>
           <QueryProvider>{children}</QueryProvider>
         </AuthProvider>
+
+        {/* 3. Toaster কম্পোনেন্টটি এখানে অ্যাড করুন (সবার শেষে) */}
+        <Toaster />
       </body>
     </html>
   );

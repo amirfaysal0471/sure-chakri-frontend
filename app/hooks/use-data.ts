@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-// বেস URL এনভায়রনমেন্ট ভেরিয়েবল থেকে নেওয়া ভালো
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 // গ্লোবাল ফেচ ফাংশন
@@ -18,9 +17,9 @@ const fetchData = async (endpoint: string) => {
 };
 
 /**
- * @param key - ক্যাশিং এর জন্য ইউনিক কি (যেমন: ["users"], ["jobs", id])
- * @param endpoint - API এর শেষ অংশ (যেমন: "/api/users")
- * @param enabled - (অপশনাল) কন্ডিশনাল ফেচিং এর জন্য (যেমন: id থাকলেই কেবল কল হবে)
+ * @param key
+ * @param endpoint
+ * @param enabled
  */
 export function useData<T>(
   key: any[],
