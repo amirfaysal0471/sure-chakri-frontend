@@ -47,11 +47,15 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
   const queryClient = useQueryClient();
 
   // --- 1. DATA FETCHING ---
-  const { data: examCatData } = useData<any>(
+
+  // ✅ FIX: Exam Categories with Loading State & Safe Array Check
+  const { data: examCatData, isLoading: isCatLoading } = useData<any>(
     ["exam-categories"],
     "/api/exam-categories"
   );
-  const examCategories = examCatData?.data || [];
+  const examCategories = Array.isArray(examCatData?.data)
+    ? examCatData.data
+    : [];
 
   const { data: qBankCatData } = useData<any>(
     ["qb-categories"],
@@ -137,10 +141,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
   const createExamMutation = usePost("/api/exams", {
     onSuccess: () => {
       toast.success("Exam created successfully!");
-
-      // 🔥 FIX: এই লাইনটি যোগ করা হয়েছে যা টেবিল রিফ্রেশ করবে
-      queryClient.invalidateQueries({ queryKey: ["exams-list"] });
-
+      queryClient.invalidateQueries({ queryKey: ["exams-list"] }); // Refresh list
       onClose(false);
     },
     onError: (err) => toast.error(err.message),
@@ -271,6 +272,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
               />
             </div>
 
+            {/* ✅ FIX: Robust Exam Category Selector */}
             <div className="space-y-2">
               <Label>Exam Category *</Label>
               <Select
@@ -278,16 +280,29 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                 onValueChange={(val) =>
                   setFormData({ ...formData, examCategoryId: val })
                 }
+                disabled={isCatLoading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Exam Category" />
+                  <SelectValue
+                    placeholder={
+                      isCatLoading ? "Loading..." : "Select Exam Category"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {examCategories.map((cat: any) => (
-                    <SelectItem key={cat._id} value={cat._id}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
+                  <ScrollArea className="h-[200px]">
+                    {examCategories.length > 0 ? (
+                      examCategories.map((cat: any) => (
+                        <SelectItem key={cat._id} value={cat._id}>
+                          {cat.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="p-2 text-sm text-center text-muted-foreground">
+                        {isCatLoading ? "Loading..." : "No categories found"}
+                      </div>
+                    )}
+                  </ScrollArea>
                 </SelectContent>
               </Select>
             </div>

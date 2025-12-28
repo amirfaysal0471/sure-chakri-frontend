@@ -1,6 +1,11 @@
 import Exam, { IExam } from "@/app/models/exam.model";
 import connectDB from "@/lib/db";
 
+// 👇 IMPORTANT: Import the referenced models here to ensure they are registered
+import "@/app/models/examCategory.model";
+// If you have a Question model, import it too, otherwise getExamById will fail later
+// import "@/app/models/question.model";
+
 /**
  * Helper to serialize Mongoose documents for Next.js Client/Server boundary.
  */
@@ -14,6 +19,7 @@ export const createExam = async (data: Partial<IExam>) => {
 
 export const getAllExams = async () => {
   await connectDB();
+  // Now Mongoose knows what "ExamCategory" is because we imported it above
   const exams = await Exam.find()
     .populate("examCategoryId", "name")
     .sort({ createdAt: -1 })
@@ -25,7 +31,7 @@ export const getExamById = async (id: string) => {
   await connectDB();
   const exam = await Exam.findById(id)
     .populate("examCategoryId", "name")
-    .populate("questions")
+    .populate("questions") // Ensure Question model is also imported if this exists
     .lean();
   return serialize(exam);
 };
