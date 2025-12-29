@@ -36,6 +36,7 @@ import {
   Plus,
   List,
   CheckCircle2,
+  Settings, // 🔥 Icon Import
 } from "lucide-react";
 
 interface ModalProps {
@@ -47,8 +48,6 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
   const queryClient = useQueryClient();
 
   // --- 1. DATA FETCHING ---
-
-  // ✅ FIX: Exam Categories with Loading State & Safe Array Check
   const { data: examCatData, isLoading: isCatLoading } = useData<any>(
     ["exam-categories"],
     "/api/exam-categories"
@@ -65,12 +64,17 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
 
   const { data: questionsData, isLoading: qLoading } = useData<any>(
     ["all-questions"],
-    "/api/question-bank/questions?limit=500"
+    "/api/question-bank/questions?limit=1000"
   );
-  const allQuestions = questionsData?.data?.questions || [];
+  const questionsList = Array.isArray(questionsData?.data)
+    ? questionsData?.data
+    : questionsData?.data?.questions || [];
 
   // --- 2. STATES ---
-  const [activeTab, setActiveTab] = useState<"select" | "manual">("select");
+  // 🔥 'settings' tab added
+  const [activeTab, setActiveTab] = useState<"select" | "manual" | "settings">(
+    "select"
+  );
 
   const [formData, setFormData] = useState({
     title: "",
@@ -83,9 +87,16 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
     status: "Draft",
     isPremium: false,
     selectedQuestionIds: [] as string[],
+    // 🔥 New Settings State
+    settings: {
+      negativeMarking: false,
+      negativeMarkValue: 0.25,
+      passMarks: 33,
+      shuffleQuestions: false,
+      showResultInstant: true,
+    },
   });
 
-  // Manual Question Form State
   const [manualQData, setManualQData] = useState({
     questionText: "",
     optionA: "",
@@ -103,19 +114,24 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
 
   // --- 3. FILTER LOGIC ---
   const filteredQuestions = useMemo(() => {
-    if (!allQuestions || !Array.isArray(allQuestions)) return [];
-
-    return allQuestions.filter((q: any) => {
+    if (!questionsList || !Array.isArray(questionsList)) return [];
+    return questionsList.filter((q: any) => {
       const matchesSearch = q.questionText
         ?.toLowerCase()
         .includes(qSearch.toLowerCase());
-      const questionCatId =
-        typeof q.categoryId === "object" ? q.categoryId?._id : q.categoryId;
+      let qCatId = "Uncategorized";
+      if (q.categoryId) {
+        if (typeof q.categoryId === "object") {
+          qCatId = q.categoryId._id || "";
+        } else if (typeof q.categoryId === "string") {
+          qCatId = q.categoryId;
+        }
+      }
       const matchesCategory =
-        qCategoryFilter === "All" || questionCatId === qCategoryFilter;
+        qCategoryFilter === "All" || qCatId === qCategoryFilter;
       return matchesSearch && matchesCategory;
     });
-  }, [allQuestions, qSearch, qCategoryFilter]);
+  }, [questionsList, qSearch, qCategoryFilter]);
 
   // --- 4. HANDLERS ---
   const handleQuestionToggle = (id: string) => {
@@ -137,33 +153,40 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
     });
   };
 
-  // --- Exam Creation Mutation ---
+  // 🔥 Helper to update settings
+  const handleSettingChange = (
+    key: keyof typeof formData.settings,
+    value: any
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        [key]: value,
+      },
+    }));
+  };
+
+  // Mutations
   const createExamMutation = usePost("/api/exams", {
     onSuccess: () => {
       toast.success("Exam created successfully!");
-      queryClient.invalidateQueries({ queryKey: ["exams-list"] }); // Refresh list
+      queryClient.invalidateQueries({ queryKey: ["exams-list"] });
       onClose(false);
     },
     onError: (err) => toast.error(err.message),
   });
 
-  // --- Manual Question Creation Mutation ---
   const createQuestionMutation = usePost("/api/question-bank/questions", {
     onSuccess: (data: any) => {
       toast.success("Question created and selected!");
-
-      // Refresh question list
       queryClient.invalidateQueries({ queryKey: ["all-questions"] });
-
-      // Add to selected list
       if (data?.data?._id) {
         setFormData((prev) => ({
           ...prev,
           selectedQuestionIds: [data.data._id, ...prev.selectedQuestionIds],
         }));
       }
-
-      // Reset form
       setManualQData({
         questionText: "",
         optionA: "",
@@ -175,8 +198,6 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
         marks: 1,
         categoryId: "",
       });
-
-      // Switch back
       setActiveTab("select");
     },
     onError: (err) => toast.error("Failed to create question: " + err.message),
@@ -190,30 +211,22 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
       ...formData,
       questions: formData.selectedQuestionIds,
       totalMarks: formData.selectedQuestionIds.length,
+      // Settings are automatically included via spread ...formData
     };
     createExamMutation.mutate(payload);
   };
 
   const handleSaveManualQuestion = () => {
+    // ... (same manual question logic)
     if (!manualQData.questionText || manualQData.correctAnswer === "") {
       return toast.warning("Question text and correct answer are required.");
     }
-
     let catIdToUse = manualQData.categoryId;
-
     if (!catIdToUse) {
-      if (qCategoryFilter !== "All") {
-        catIdToUse = qCategoryFilter;
-      } else if (qbCategories.length > 0) {
-        catIdToUse = qbCategories[0]._id;
-      }
+      if (qCategoryFilter !== "All") catIdToUse = qCategoryFilter;
+      else if (qbCategories.length > 0) catIdToUse = qbCategories[0]._id;
     }
-
-    if (!catIdToUse) {
-      return toast.warning(
-        "Please select a category (or ensure categories exist)."
-      );
-    }
+    if (!catIdToUse) return toast.warning("Please select a category.");
 
     const payload = {
       categoryId: catIdToUse,
@@ -228,7 +241,6 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
       explanation: manualQData.explanation,
       marks: manualQData.marks,
     };
-
     createQuestionMutation.mutate(payload);
   };
 
@@ -240,7 +252,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-12">
-          {/* LEFT COLUMN: EXAM DETAILS */}
+          {/* --- LEFT COLUMN: EXAM DETAILS --- */}
           <div className="md:col-span-4 p-6 overflow-y-auto space-y-4 border-r bg-gray-50/50">
             <h3 className="font-semibold flex items-center gap-2 text-primary">
               <span className="bg-primary/10 px-2 py-0.5 rounded text-sm">
@@ -272,10 +284,14 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
               />
             </div>
 
-            {/* ✅ FIX: Robust Exam Category Selector */}
             <div className="space-y-2">
               <Label>Exam Category *</Label>
               <Select
+                key={
+                  isCatLoading
+                    ? "loading"
+                    : `loaded-${examCategories.length}-${formData.examCategoryId}`
+                }
                 value={formData.examCategoryId}
                 onValueChange={(val) =>
                   setFormData({ ...formData, examCategoryId: val })
@@ -299,7 +315,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                       ))
                     ) : (
                       <div className="p-2 text-sm text-center text-muted-foreground">
-                        {isCatLoading ? "Loading..." : "No categories found"}
+                        No categories found
                       </div>
                     )}
                   </ScrollArea>
@@ -392,29 +408,40 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: MANAGE QUESTIONS */}
+          {/* --- RIGHT COLUMN: QUESTION SELECTION & SETTINGS --- */}
           <div className="md:col-span-8 p-6 flex flex-col h-full overflow-hidden">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2 bg-muted p-1 rounded-lg">
+              <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
                 <button
                   onClick={() => setActiveTab("select")}
-                  className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${
                     activeTab === "select"
                       ? "bg-white shadow text-primary"
                       : "text-muted-foreground hover:text-primary"
                   }`}
                 >
-                  <List size={16} /> Select Existing
+                  <List size={14} /> Select
                 </button>
                 <button
                   onClick={() => setActiveTab("manual")}
-                  className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${
                     activeTab === "manual"
                       ? "bg-white shadow text-primary"
                       : "text-muted-foreground hover:text-primary"
                   }`}
                 >
-                  <Plus size={16} /> Create New
+                  <Plus size={14} /> Create New
+                </button>
+                {/* 🔥 Settings Tab Button */}
+                <button
+                  onClick={() => setActiveTab("settings")}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${
+                    activeTab === "settings"
+                      ? "bg-white shadow text-primary"
+                      : "text-muted-foreground hover:text-primary"
+                  }`}
+                >
+                  <Settings size={14} /> Settings
                 </button>
               </div>
               <Badge variant="secondary">
@@ -503,16 +530,14 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                                 >
                                   {q.marks} Mark
                                 </Badge>
-                                {q.categoryId && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-[10px] h-5 px-1.5"
-                                  >
-                                    {typeof q.categoryId === "object"
-                                      ? q.categoryId.name
-                                      : "Cat"}
-                                  </Badge>
-                                )}
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[10px] h-5 px-1.5"
+                                >
+                                  {typeof q.categoryId === "object"
+                                    ? q.categoryId?.name
+                                    : "Category"}
+                                </Badge>
                               </div>
                             </div>
                           </div>
@@ -544,12 +569,10 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                     Save & Select
                   </Button>
                 </div>
-
+                {/* ... Manual form content (same as previous) ... */}
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <Label>
-                      Question Category <span className="text-red-500">*</span>
-                    </Label>
+                    <Label>Question Category *</Label>
                     <Select
                       value={manualQData.categoryId}
                       onValueChange={(val) =>
@@ -568,11 +591,8 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-1">
-                    <Label>
-                      Question Text <span className="text-red-500">*</span>
-                    </Label>
+                    <Label>Question Text *</Label>
                     <Textarea
                       placeholder="Type question here..."
                       value={manualQData.questionText}
@@ -585,11 +605,8 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                       className="min-h-[80px]"
                     />
                   </div>
-
                   <div className="space-y-2">
-                    <Label>
-                      Options & Answer (Select the radio for correct answer)
-                    </Label>
+                    <Label>Options & Answer</Label>
                     <RadioGroup
                       value={manualQData.correctAnswer}
                       onValueChange={(val) =>
@@ -627,35 +644,160 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                       ))}
                     </RadioGroup>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <Label>Marks</Label>
-                      <Input
-                        type="number"
-                        className="h-9"
-                        value={manualQData.marks}
-                        onChange={(e) =>
-                          setManualQData({
-                            ...manualQData,
-                            marks: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
-
                   <div className="space-y-1">
-                    <Label>Explanation</Label>
-                    <Textarea
-                      placeholder="Optional explanation..."
-                      className="h-16"
-                      value={manualQData.explanation}
+                    <Label>Marks</Label>
+                    <Input
+                      type="number"
+                      className="h-9"
+                      value={manualQData.marks}
                       onChange={(e) =>
                         setManualQData({
                           ...manualQData,
-                          explanation: e.target.value,
+                          marks: Number(e.target.value),
                         })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 🔥 TAB: EXAM SETTINGS (New Feature) */}
+            {activeTab === "settings" && (
+              <div className="flex-1 overflow-y-auto border rounded-md bg-background p-6 space-y-6">
+                <div className="flex items-center justify-between border-b pb-4">
+                  <div>
+                    <h4 className="font-semibold text-lg">
+                      Exam Configuration
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Manage negative marking, pass marks and visibility.
+                    </p>
+                  </div>
+                  <Settings className="text-muted-foreground opacity-20 h-10 w-10" />
+                </div>
+
+                {/* 1. Negative Marking */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border">
+                    <div className="space-y-0.5">
+                      <Label className="text-base font-medium">
+                        Negative Marking
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Deduct marks for wrong answers
+                      </p>
+                    </div>
+                    <Switch
+                      checked={formData.settings.negativeMarking}
+                      onCheckedChange={(val) =>
+                        handleSettingChange("negativeMarking", val)
+                      }
+                    />
+                  </div>
+
+                  {formData.settings.negativeMarking && (
+                    <div className="ml-2 pl-4 border-l-2 border-primary/20 animate-in slide-in-from-top-2">
+                      <Label className="mb-2 block text-sm">
+                        Negative Mark Value (Per Wrong Answer)
+                      </Label>
+                      <div className="flex gap-2 flex-wrap">
+                        {[0.25, 0.5, 1.0].map((val) => (
+                          <div
+                            key={val}
+                            onClick={() =>
+                              handleSettingChange("negativeMarkValue", val)
+                            }
+                            className={`cursor-pointer px-4 py-2 rounded border text-sm font-medium transition-all ${
+                              formData.settings.negativeMarkValue === val
+                                ? "bg-primary text-white border-primary"
+                                : "bg-background hover:bg-muted"
+                            }`}
+                          >
+                            {val}
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-1 border rounded px-2 bg-background">
+                          <span className="text-muted-foreground text-xs">
+                            Custom:
+                          </span>
+                          <Input
+                            type="number"
+                            className="h-8 w-16 border-none focus-visible:ring-0 p-0 shadow-none"
+                            value={formData.settings.negativeMarkValue}
+                            onChange={(e) =>
+                              handleSettingChange(
+                                "negativeMarkValue",
+                                Number(e.target.value)
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Pass Marks */}
+                <div className="space-y-2 pt-2">
+                  <Label className="text-base font-medium">
+                    Pass Mark (Percentage %)
+                  </Label>
+                  <div className="flex items-center gap-4 bg-muted/30 p-3 rounded-lg border">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        value={formData.settings.passMarks}
+                        onChange={(e) =>
+                          handleSettingChange(
+                            "passMarks",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="w-24 bg-background"
+                      />
+                      <span className="font-bold text-muted-foreground">%</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground border-l pl-4">
+                      Total Questions:{" "}
+                      <strong>{formData.selectedQuestionIds.length}</strong>.
+                      <br />
+                      Students need{" "}
+                      <strong className="text-primary">
+                        {Math.ceil(
+                          (formData.selectedQuestionIds.length *
+                            formData.settings.passMarks) /
+                            100
+                        )}
+                      </strong>{" "}
+                      marks to pass.
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Other Toggles */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                    <Label className="cursor-pointer" htmlFor="shuffle">
+                      Shuffle Questions
+                    </Label>
+                    <Switch
+                      id="shuffle"
+                      checked={formData.settings.shuffleQuestions}
+                      onCheckedChange={(val) =>
+                        handleSettingChange("shuffleQuestions", val)
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                    <Label className="cursor-pointer" htmlFor="instant-result">
+                      Show Result Immediately
+                    </Label>
+                    <Switch
+                      id="instant-result"
+                      checked={formData.settings.showResultInstant}
+                      onCheckedChange={(val) =>
+                        handleSettingChange("showResultInstant", val)
                       }
                     />
                   </div>
@@ -676,7 +818,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
           >
             {createExamMutation.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
+            )}{" "}
             Create Exam
           </Button>
         </DialogFooter>

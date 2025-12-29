@@ -54,7 +54,9 @@ export function CategoryTable({
   onToggleStatus,
 }: CategoryTableProps) {
   const filteredData = useMemo(() => {
-    if (!categories) return [];
+    // 🔥 FIX: Ensure categories is strictly an array before filtering
+    if (!Array.isArray(categories)) return [];
+
     return categories.filter((cat) =>
       cat.name.toLowerCase().includes(search.toLowerCase())
     );

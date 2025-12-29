@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import connectDB from "@/lib/db";
-import { createQuestion } from "@/app/services/question.service";
-import Question from "@/app/models/question.models";
+import { createQuestion, getQuestions } from "@/app/services/question.service";
 
 // POST: Create New Question
 export async function POST(req: Request) {
   try {
-    await connectDB();
     const body = await req.json();
 
-    // ভ্যালিডেশন ফিক্স: correctAnswer 0 হতে পারে (Index হিসেবে)
     if (
       !body.categoryId ||
       !body.questionText ||
@@ -32,22 +28,22 @@ export async function POST(req: Request) {
   }
 }
 
-// GET: Fetch Questions (Create Exam পেজে লোড করার জন্য)
+// GET: Fetch Questions with Search, Filter & Pagination
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get("limit") || "500");
 
-    const questions = await Question.find()
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .populate("categoryId", "name") // ক্যাটাগরি পপুলেট করা হলো
-      .lean();
+    const search = searchParams.get("search") || "";
+    const categoryId = searchParams.get("category") || "all";
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "10");
+
+    const result = await getQuestions(search, categoryId, page, limit);
 
     return NextResponse.json({
       success: true,
-      data: { questions },
+      data: result.questions,
+      metadata: result.metadata,
     });
   } catch (error: any) {
     return NextResponse.json(

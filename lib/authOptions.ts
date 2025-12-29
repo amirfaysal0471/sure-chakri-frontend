@@ -1,4 +1,3 @@
-// lib/authOptions.ts
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
@@ -47,6 +46,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    // 🔥 Google দিয়ে সাইন ইন হ্যান্ডলিং (FIXED)
     async signIn({ user, account }) {
       if (account?.provider === "google") {
         try {
@@ -54,13 +54,28 @@ export const authOptions: NextAuthOptions = {
           const existingUser = await User.findOne({ email: user.email });
 
           if (!existingUser) {
+            // নতুন ইউজার তৈরি হচ্ছে
             await User.create({
               name: user.name,
               email: user.email,
               image: user.image,
               provider: "google",
-              role: "user", // নতুন ইউজার গুগল দিয়ে ঢুকলে 'user' রোল পাবে
+              // 🔥 FIX: গুগল আইডি সেভ করা হচ্ছে (duplicate error এড়ানোর জন্য)
+              googleId: account.providerAccountId,
+              role: "user",
+              plan: "free",
             });
+          } else {
+            // যদি ইউজার আগে থেকেই থাকে কিন্তু googleId সেট করা না থাকে
+            // তাহলে আমরা একাউন্ট লিংক করে দেব
+            if (!existingUser.googleId) {
+              existingUser.googleId = account.providerAccountId;
+              // যদি আগে provider credentials থাকে, এখন google ও যুক্ত হবে (optional logic)
+              if (existingUser.provider === "credentials") {
+                existingUser.provider = "google"; // বা হাইব্রিড হিসেবে রাখতে পারেন
+              }
+              await existingUser.save();
+            }
           }
           return true;
         } catch (error) {
@@ -70,39 +85,38 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    // JWT কলব্যাক: এখানে আমরা রোল এবং আইডি টোকেনে সেট করি
+
+    // 🔥 JWT কলব্যাক
     async jwt({ token, user, trigger, session }) {
-      // ১. যদি ইউজার প্রোফাইল আপডেট করে, তবে টোকেন আপডেট হবে
       if (trigger === "update" && session?.name) {
         token.name = session.name;
       }
 
-      // ২. প্রথমবার লগইন করার সময় (user অবজেক্ট থাকে)
-      if (user) {
+      if (token.email) {
         await connectDB();
-        // ডাটাবেস থেকে লেটেস্ট রোল এবং আইডি নিয়ে আসা
-        const dbUser = await User.findOne({ email: user.email });
+        const dbUser = await User.findOne({ email: token.email });
 
         if (dbUser) {
           token.id = dbUser._id.toString();
-          token.role = dbUser.role; // রোল সেট করা হচ্ছে
+          token.role = dbUser.role;
+          token.plan = dbUser.plan;
         }
       }
       return token;
     },
-    // সেশন কলব্যাক: টোকেন থেকে ডাটা সেশনে পাঠানো হয় (Client Side এ পাওয়ার জন্য)
+
+    // 🔥 সেশন কলব্যাক
     async session({ session, token }) {
       if (session?.user) {
-        // Typescript এর জন্য 'as any' ব্যবহার করা হয়েছে,
-        // আপনি চাইলে next-auth.d.ts ফাইল দিয়ে টাইপ ঠিক করতে পারেন।
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
+        (session.user as any).plan = token.plan;
       }
       return session;
     },
   },
   pages: {
-    signIn: "/", // লগইন পেজ হিসেবে হোমপেজ বা আপনার মডাল রাখা ভালো
+    signIn: "/",
   },
   secret: process.env.NEXTAUTH_SECRET,
 };

@@ -24,6 +24,8 @@ import {
   Plus,
   Tags,
   type LucideIcon,
+  PrinterCheckIcon,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -80,16 +82,6 @@ const ADMIN_NAV: NavItem[] = [
     isDropdown: true,
     children: [
       { label: "Create-Exams", href: "/admin-dashboard/exams", icon: Clock },
-      {
-        label: "Approved List",
-        href: "/admin/verification/approved",
-        icon: CheckCircle,
-      },
-      {
-        label: "Rejected List",
-        href: "/admin/verification/rejected",
-        icon: XCircle,
-      },
     ],
   },
   {
@@ -107,9 +99,19 @@ const ADMIN_NAV: NavItem[] = [
         href: "/admin-dashboard/question-bank/create",
         icon: Plus,
       },
-      { label: "All Questions", href: "/admin/question-bank/list", icon: List },
+      {
+        label: "All Questions",
+        href: "/admin-dashboard/question-bank/all-questions",
+        icon: List,
+      },
     ],
   },
+  {
+    label: "Pricing Plan",
+    href: "/admin-dashboard/pricing",
+    icon: SlidersHorizontal,
+  },
+
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 

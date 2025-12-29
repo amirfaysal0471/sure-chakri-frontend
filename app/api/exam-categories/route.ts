@@ -4,14 +4,17 @@ import {
 } from "@/app/services/examCategory.service";
 import { NextResponse } from "next/server";
 
-// POST: Create
+// POST: Create Category
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
     if (!body.name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
+
     const result = await createExamCategory(body);
+
     return NextResponse.json(
       { message: "Created successfully", data: result },
       { status: 201 }
@@ -27,7 +30,7 @@ export async function POST(req: Request) {
   }
 }
 
-// GET: Fetch All
+// GET: Fetch All Categories
 export async function GET() {
   try {
     const data = await getExamCategories();

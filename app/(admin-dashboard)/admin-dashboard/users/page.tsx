@@ -1,13 +1,13 @@
 "use client";
+
 import { useState } from "react";
+import Link from "next/link";
+import { toast } from "sonner"; // টোস্ট ইম্পোর্ট
 
 import {
   Search,
-  Plus,
   MoreHorizontal,
-  Download,
   Trash2,
-  Edit,
   Eye,
   Loader2,
   AlertCircle,
@@ -43,47 +43,74 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PaginationControls } from "@/app/components/ui/pagination-controls";
 import { useData } from "@/app/hooks/use-data";
+import { useDelete } from "@/app/hooks/useDelete"; // 🔥 হুক ইম্পোর্ট
+import { cn } from "@/lib/utils";
 
-// --- ইন্টারফেস ---
+// 🔥 Alert Dialog ইম্পোর্ট (shadcn-ui)
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 interface User {
   _id: string;
   name: string;
   email: string;
   role: string;
+  plan?: string;
+  planExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
   image?: string;
 }
 
 export default function UserManagementPage() {
-  // --- States (Filters & Pagination) ---
+  // --- States ---
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [planFilter, setPlanFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 7;
 
-  // --- 2. Data Fetching using Global Hook ---
-  // useEffect এবং useState এর দরকার নেই। useData সব হ্যান্ডেল করবে।
+  // 🔥 Delete State
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // --- Data Fetching ---
   const {
     data: users = [],
     isLoading,
     isError,
-  } = useData<User[]>(["users"], "/api/users");
+  } = useData<User[]>(["users"], "/api/users"); // 🔥 "users" key টি রিফ্রেশ হবে
+
+  // --- 🔥 Delete Mutation ---
+  const deleteMutation = useDelete("/api/users", {
+    invalidateKeys: ["users"], // ডিলিট হলে ডাটা রিফ্রেশ হবে
+    onSuccess: () => {
+      toast.success("User deleted successfully");
+      setDeleteId(null); // মডাল বন্ধ হবে
+    },
+    onError: (err) => {
+      toast.error(`Error: ${err.message}`);
+    },
+  });
 
   // --- Filtering Logic ---
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.email?.toLowerCase().includes(searchTerm.toLowerCase());
-
     const matchesRole =
       roleFilter === "all" || user.role?.toLowerCase() === roleFilter;
+    const matchesPlan =
+      planFilter === "all" || (user.plan || "free") === planFilter;
 
-    // Status logic (Active hardcoded for now as requested)
-    const matchesStatus = statusFilter === "all" || "active" === statusFilter;
-
-    return matchesSearch && matchesRole && matchesStatus;
+    return matchesSearch && matchesRole && matchesPlan;
   });
 
   // --- Pagination Logic ---
@@ -98,13 +125,19 @@ export default function UserManagementPage() {
     setCurrentPage(page);
   };
 
-  // --- Date Formatting Helper ---
+  // --- Date Helpers ---
   const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A";
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
     });
+  };
+
+  const isExpired = (dateString?: string) => {
+    if (!dateString) return false;
+    return new Date(dateString) < new Date();
   };
 
   return (
@@ -114,16 +147,8 @@ export default function UserManagementPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
           <p className="text-muted-foreground">
-            Manage your users, roles, and permissions here.
+            Manage your users, plans, and billing cycles.
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" /> Export
-          </Button>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" /> Add User
-          </Button>
         </div>
       </div>
 
@@ -153,7 +178,7 @@ export default function UserManagementPage() {
                 setCurrentPage(1);
               }}
             >
-              <SelectTrigger className="w-full md:w-[180px]">
+              <SelectTrigger className="w-full md:w-[150px]">
                 <SelectValue placeholder="Role" />
               </SelectTrigger>
               <SelectContent>
@@ -164,19 +189,20 @@ export default function UserManagementPage() {
               </SelectContent>
             </Select>
             <Select
-              value={statusFilter}
+              value={planFilter}
               onValueChange={(val) => {
-                setStatusFilter(val);
+                setPlanFilter(val);
                 setCurrentPage(1);
               }}
             >
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Status" />
+              <SelectTrigger className="w-full md:w-[150px]">
+                <SelectValue placeholder="Plan" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="all">All Plans</SelectItem>
+                <SelectItem value="free">Free</SelectItem>
+                <SelectItem value="pro">Pro</SelectItem>
+                <SelectItem value="premium">Premium</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -191,27 +217,22 @@ export default function UserManagementPage() {
               <TableRow>
                 <TableHead className="w-[250px]">User Info</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Current Plan</TableHead>
+                <TableHead>Next Billing</TableHead>
                 <TableHead className="hidden md:table-cell">Joined</TableHead>
-                <TableHead className="hidden md:table-cell">
-                  Last Active
-                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                // --- Loading State ---
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center">
                     <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                      <Loader2 className="animate-spin h-5 w-5" /> Loading
-                      users...
+                      <Loader2 className="animate-spin h-5 w-5" /> Loading...
                     </div>
                   </TableCell>
                 </TableRow>
               ) : isError ? (
-                // --- Error State ---
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center">
                     <div className="flex items-center justify-center gap-2 text-red-500">
@@ -220,7 +241,6 @@ export default function UserManagementPage() {
                   </TableCell>
                 </TableRow>
               ) : currentData.length > 0 ? (
-                // --- Data Render ---
                 currentData.map((user) => (
                   <TableRow key={user._id}>
                     <TableCell>
@@ -260,17 +280,49 @@ export default function UserManagementPage() {
                     </TableCell>
                     <TableCell>
                       <Badge
-                        className="bg-emerald-100 text-emerald-700 border-emerald-200"
                         variant="outline"
+                        className={cn(
+                          "capitalize border",
+                          user.plan === "premium" &&
+                            "bg-amber-50 text-amber-700 border-amber-200",
+                          user.plan === "pro" &&
+                            "bg-blue-50 text-blue-700 border-blue-200",
+                          (!user.plan || user.plan === "free") &&
+                            "bg-gray-50 text-gray-600 border-gray-200"
+                        )}
                       >
-                        Active
+                        {user.plan || "Free"}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {!user.plan || user.plan === "free" ? (
+                        <span className="text-xs text-muted-foreground">
+                          Lifetime
+                        </span>
+                      ) : (
+                        <div className="flex flex-col">
+                          <span
+                            className={cn(
+                              "text-sm font-medium",
+                              isExpired(user.planExpiresAt)
+                                ? "text-red-500"
+                                : "text-gray-700"
+                            )}
+                          >
+                            {user.planExpiresAt
+                              ? formatDate(user.planExpiresAt)
+                              : "N/A"}
+                          </span>
+                          {isExpired(user.planExpiresAt) && (
+                            <span className="text-[10px] text-red-500 font-semibold bg-red-50 px-1 rounded w-fit">
+                              Expired
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
                       {formatDate(user.createdAt)}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
-                      {formatDate(user.updatedAt)}
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -281,14 +333,20 @@ export default function UserManagementPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem>
-                            <Eye className="mr-2 h-4 w-4" /> View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Edit className="mr-2 h-4 w-4" /> Edit User
+                          <DropdownMenuItem asChild>
+                            <Link
+                              href={`/admin-dashboard/users/${user._id}`}
+                              className="flex items-center cursor-pointer"
+                            >
+                              <Eye className="mr-2 h-4 w-4" /> View Details
+                            </Link>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-600">
+                          {/* 🔥 Delete Trigger */}
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600 cursor-pointer"
+                            onClick={() => setDeleteId(user._id)}
+                          >
                             <Trash2 className="mr-2 h-4 w-4" /> Delete User
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -307,7 +365,6 @@ export default function UserManagementPage() {
           </Table>
         </CardContent>
 
-        {/* Pagination Footer */}
         <div className="py-4 border-t">
           <PaginationControls
             currentPage={currentPage}
@@ -318,6 +375,39 @@ export default function UserManagementPage() {
           />
         </div>
       </Card>
+
+      {/* 🔥 Confirmation Modal */}
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the
+              user account and remove their data from our servers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteId) deleteMutation.mutate(deleteId);
+              }}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...
+                </>
+              ) : (
+                "Delete User"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

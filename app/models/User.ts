@@ -13,19 +13,35 @@ const userSchema = new Schema(
     },
     password: {
       type: String,
-      required: false, // এটি false করতে হবে কারণ OAuth ইউজারদের পাসওয়ার্ড নেই
+      required: false, // Google Login এর জন্য এটি false থাকবে
     },
     image: {
-      type: String, // Google/GitHub প্রোফাইল পিকচারের জন্য
+      type: String,
     },
     provider: {
-      type: String, // google or credentials
+      type: String,
       default: "credentials",
+    },
+    // 🔥 FIX: Google ID ফিল্ড যোগ করা হয়েছে (Duplicate Error এড়াতে)
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true, // এটি খুবই গুরুত্বপূর্ণ: যাদের googleId নেই (null), তাদের জন্য এরর দিবে না
     },
     role: {
       type: String,
-      enum: ["user", "admin"], // রোল শুধু user বা admin হতে পারবে
-      default: "user", // ডিফল্ট ভ্যালু user
+      enum: ["user", "admin"],
+      default: "user",
+    },
+    plan: {
+      type: String,
+      enum: ["free", "pro", "premium"],
+      default: "free",
+    },
+
+    planExpiresAt: {
+      type: Date,
+      default: null,
     },
   },
   { timestamps: true }

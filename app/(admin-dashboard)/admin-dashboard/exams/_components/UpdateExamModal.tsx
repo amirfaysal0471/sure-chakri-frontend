@@ -5,11 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle2,
-  Filter,
   List,
   Loader2,
   Plus,
   Search,
+  Filter,
+  Settings, // 🔥 Icon Added
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,7 +56,7 @@ interface Question {
   marks: number;
 }
 
-// Partial interface for the incoming exam data to avoid 'any'
+// Partial interface for the incoming exam data
 interface ExamData {
   _id: string;
   title: string;
@@ -64,10 +65,18 @@ interface ExamData {
   startTime?: string;
   endTime?: string;
   duration?: number;
-  examCategoryId?: string | { _id: string };
+  examCategoryId?: string | { _id: string; name?: string };
   status?: "Draft" | "Upcoming" | "Live";
   isPremium?: boolean;
-  questions?: (string | { _id: string })[];
+  questions?: any[];
+  // 🔥 Settings added to interface
+  settings?: {
+    negativeMarking: boolean;
+    negativeMarkValue: number;
+    passMarks: number;
+    shuffleQuestions: boolean;
+    showResultInstant: boolean;
+  };
 }
 
 interface UpdateModalProps {
@@ -87,6 +96,14 @@ interface ExamFormData {
   status: "Draft" | "Upcoming" | "Live";
   isPremium: boolean;
   selectedQuestionIds: string[];
+  // 🔥 Settings added to Form Data
+  settings: {
+    negativeMarking: boolean;
+    negativeMarkValue: number;
+    passMarks: number;
+    shuffleQuestions: boolean;
+    showResultInstant: boolean;
+  };
 }
 
 interface ManualQuestionFormData {
@@ -114,6 +131,14 @@ const INITIAL_FORM_DATA: ExamFormData = {
   status: "Draft",
   isPremium: false,
   selectedQuestionIds: [],
+  // 🔥 Default Settings
+  settings: {
+    negativeMarking: false,
+    negativeMarkValue: 0.25,
+    passMarks: 33,
+    shuffleQuestions: false,
+    showResultInstant: true,
+  },
 };
 
 const INITIAL_MANUAL_Q_DATA: ManualQuestionFormData = {
@@ -136,11 +161,12 @@ export function UpdateExamModal({
   const queryClient = useQueryClient();
 
   // --- Data Fetching ---
-  const { data: examCatData } = useData<{ data: Category[] }>(
-    ["exam-categories"],
-    "/api/exam-categories"
-  );
-  const examCategories = examCatData?.data || [];
+  const { data: examCatData, isLoading: isCatLoading } = useData<{
+    data: Category[];
+  }>(["exam-categories"], "/api/exam-categories");
+  const examCategories = Array.isArray(examCatData?.data)
+    ? examCatData.data
+    : [];
 
   const { data: qBankCatData } = useData<{
     data: { categories: Category[] };
@@ -149,11 +175,18 @@ export function UpdateExamModal({
 
   const { data: questionsData, isLoading: qLoading } = useData<{
     data: { questions: Question[] };
-  }>(["all-questions"], "/api/question-bank/questions?limit=500");
-  const allQuestions = questionsData?.data?.questions || [];
+  }>(["all-questions"], "/api/question-bank/questions?limit=1000");
+
+  const allQuestionsData = questionsData?.data;
+  const allQuestions = Array.isArray(allQuestionsData)
+    ? allQuestionsData
+    : allQuestionsData?.questions || [];
 
   // --- States ---
-  const [activeTab, setActiveTab] = useState<"select" | "manual">("select");
+  // 🔥 Added 'settings' to activeTab type
+  const [activeTab, setActiveTab] = useState<"select" | "manual" | "settings">(
+    "select"
+  );
   const [formData, setFormData] = useState<ExamFormData>(INITIAL_FORM_DATA);
   const [manualQData, setManualQData] = useState<ManualQuestionFormData>(
     INITIAL_MANUAL_Q_DATA
@@ -162,9 +195,16 @@ export function UpdateExamModal({
   const [qSearch, setQSearch] = useState("");
   const [qCategoryFilter, setQCategoryFilter] = useState("All");
 
-  // --- Effects ---
+  // --- 🔥 FIX 1: Load Initial Data Correctly (Including Settings) ---
   useEffect(() => {
-    if (examData) {
+    if (examData && isOpen) {
+      const initialQuestionIds = (examData.questions || [])
+        .map((q: any) => {
+          if (typeof q === "string") return q;
+          return q._id || "";
+        })
+        .filter((id) => id !== "");
+
       setFormData({
         title: examData.title || "",
         topic: examData.topic || "",
@@ -176,16 +216,22 @@ export function UpdateExamModal({
         duration: examData.duration || 60,
         examCategoryId:
           typeof examData.examCategoryId === "object"
-            ? examData.examCategoryId?._id
+            ? examData.examCategoryId?._id || ""
             : examData.examCategoryId || "",
         status: examData.status || "Draft",
         isPremium: examData.isPremium || false,
-        selectedQuestionIds: examData.questions
-          ? examData.questions.map((q) => (typeof q === "string" ? q : q._id))
-          : [],
+        selectedQuestionIds: initialQuestionIds,
+        // ✅ Load Settings with fallbacks
+        settings: {
+          negativeMarking: examData.settings?.negativeMarking ?? false,
+          negativeMarkValue: examData.settings?.negativeMarkValue ?? 0.25,
+          passMarks: examData.settings?.passMarks ?? 33,
+          shuffleQuestions: examData.settings?.shuffleQuestions ?? false,
+          showResultInstant: examData.settings?.showResultInstant ?? true,
+        },
       });
     }
-  }, [examData]);
+  }, [examData, isOpen]);
 
   // --- Filter Logic ---
   const filteredQuestions = useMemo(() => {
@@ -195,10 +241,15 @@ export function UpdateExamModal({
 
     return allQuestions.filter((q) => {
       const matchesSearch = q.questionText?.toLowerCase().includes(searchLower);
-      const questionCatId =
-        typeof q.categoryId === "object" ? q.categoryId?._id : q.categoryId;
+
+      let qCatId = "";
+      if (q.categoryId) {
+        if (typeof q.categoryId === "object") qCatId = q.categoryId._id || "";
+        else if (typeof q.categoryId === "string") qCatId = q.categoryId;
+      }
+
       const matchesCategory =
-        qCategoryFilter === "All" || questionCatId === qCategoryFilter;
+        qCategoryFilter === "All" || qCatId === qCategoryFilter;
 
       return matchesSearch && matchesCategory;
     });
@@ -217,7 +268,6 @@ export function UpdateExamModal({
   const createQuestionMutation = usePost("/api/question-bank/questions", {
     onSuccess: (data: { data: { _id: string } }) => {
       toast.success("Question created and selected!");
-
       queryClient.invalidateQueries({ queryKey: ["all-questions"] });
 
       if (data?.data?._id) {
@@ -228,6 +278,8 @@ export function UpdateExamModal({
       }
 
       setManualQData(INITIAL_MANUAL_Q_DATA);
+      setQSearch("");
+      setQCategoryFilter("All");
       setActiveTab("select");
     },
     onError: (err) => toast.error(`Failed to create question: ${err.message}`),
@@ -246,7 +298,22 @@ export function UpdateExamModal({
     });
   };
 
+  // 🔥 Setting Change Handler
+  const handleSettingChange = (
+    key: keyof typeof formData.settings,
+    value: any
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        [key]: value,
+      },
+    }));
+  };
+
   const handleSaveManualQuestion = () => {
+    // ... existing manual question logic
     if (!manualQData.questionText || manualQData.correctAnswer === "") {
       return toast.warning("Question text and correct answer are required.");
     }
@@ -290,6 +357,7 @@ export function UpdateExamModal({
       ...formData,
       questions: formData.selectedQuestionIds,
       totalMarks: formData.selectedQuestionIds.length,
+      // Settings are automatically included
     };
 
     updateMutation.mutate({ id: examData._id, data: payload });
@@ -326,23 +394,36 @@ export function UpdateExamModal({
                 className="min-h-[80px]"
               />
             </div>
+            {/* ... Other Inputs (Category, Date, etc.) ... */}
             <div className="space-y-2">
               <Label>Exam Category *</Label>
               <Select
+                key={
+                  isCatLoading ? "loading" : `loaded-${examCategories.length}`
+                }
                 value={formData.examCategoryId}
                 onValueChange={(val) =>
                   setFormData({ ...formData, examCategoryId: val })
                 }
+                disabled={isCatLoading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select" />
+                  <SelectValue
+                    placeholder={isCatLoading ? "Loading..." : "Select"}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {examCategories.map((c) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
+                  {examCategories.length > 0 ? (
+                    examCategories.map((c) => (
+                      <SelectItem key={c._id} value={c._id}>
+                        {c.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="p-2 text-xs text-center text-muted-foreground">
+                      No categories found
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -432,30 +513,43 @@ export function UpdateExamModal({
           {/* RIGHT COLUMN */}
           <div className="flex h-full flex-col overflow-hidden p-6 md:col-span-8">
             <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2 rounded-lg bg-muted p-1">
+              <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
                 <button
                   type="button"
                   onClick={() => setActiveTab("select")}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all",
+                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs md:text-sm font-medium transition-all",
                     activeTab === "select"
                       ? "bg-white text-primary shadow"
                       : "text-muted-foreground hover:text-primary"
                   )}
                 >
-                  <List size={16} /> Select Existing
+                  <List size={14} /> Select
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab("manual")}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all",
+                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs md:text-sm font-medium transition-all",
                     activeTab === "manual"
                       ? "bg-white text-primary shadow"
                       : "text-muted-foreground hover:text-primary"
                   )}
                 >
-                  <Plus size={16} /> Create New
+                  <Plus size={14} /> New Question
+                </button>
+                {/* 🔥 Settings Tab Button Added */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("settings")}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs md:text-sm font-medium transition-all",
+                    activeTab === "settings"
+                      ? "bg-white text-primary shadow"
+                      : "text-muted-foreground hover:text-primary"
+                  )}
+                >
+                  <Settings size={14} /> Settings
                 </button>
               </div>
               <Badge variant="secondary">
@@ -473,7 +567,10 @@ export function UpdateExamModal({
                       onValueChange={setQCategoryFilter}
                     >
                       <SelectTrigger className="h-9 flex-1 bg-background">
-                        <SelectValue placeholder="Filter Category" />
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Filter size={14} />
+                          <SelectValue placeholder="Filter Category" />
+                        </div>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="All">All Categories</SelectItem>
@@ -532,9 +629,24 @@ export function UpdateExamModal({
                               <p className="line-clamp-2 text-sm">
                                 {q.questionText}
                               </p>
-                              <Badge variant="outline" className="text-[10px]">
-                                {q.marks} Mark
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px]"
+                                >
+                                  {q.marks} Mark
+                                </Badge>
+                                {q.categoryId && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px]"
+                                  >
+                                    {typeof q.categoryId === "object"
+                                      ? q.categoryId.name
+                                      : "Cat"}
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </div>
                         ))
@@ -565,7 +677,7 @@ export function UpdateExamModal({
                     Save & Select
                   </Button>
                 </div>
-
+                {/* Manual Question Form Fields */}
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <Label>Category *</Label>
@@ -587,7 +699,6 @@ export function UpdateExamModal({
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-1">
                     <Label htmlFor="q-text">Question *</Label>
                     <Textarea
@@ -603,7 +714,6 @@ export function UpdateExamModal({
                       className="min-h-[80px]"
                     />
                   </div>
-
                   <div className="space-y-2">
                     <Label>Options & Answer</Label>
                     <RadioGroup
@@ -643,7 +753,6 @@ export function UpdateExamModal({
                       ))}
                     </RadioGroup>
                   </div>
-
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="q-marks">Marks</Label>
@@ -661,7 +770,6 @@ export function UpdateExamModal({
                       />
                     </div>
                   </div>
-
                   <div className="space-y-1">
                     <Label htmlFor="q-explanation">Explanation</Label>
                     <Textarea
@@ -674,6 +782,149 @@ export function UpdateExamModal({
                           ...manualQData,
                           explanation: e.target.value,
                         })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 🔥 TAB: SETTINGS (New) */}
+            {activeTab === "settings" && (
+              <div className="flex-1 overflow-y-auto border rounded-md bg-background p-6 space-y-6">
+                <div className="flex items-center justify-between border-b pb-4">
+                  <div>
+                    <h4 className="font-semibold text-lg">
+                      Exam Configuration
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Manage negative marking, pass marks and visibility.
+                    </p>
+                  </div>
+                  <Settings className="text-muted-foreground opacity-20 h-10 w-10" />
+                </div>
+
+                {/* 1. Negative Marking */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border">
+                    <div className="space-y-0.5">
+                      <Label className="text-base font-medium">
+                        Negative Marking
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Deduct marks for wrong answers
+                      </p>
+                    </div>
+                    <Switch
+                      checked={formData.settings.negativeMarking}
+                      onCheckedChange={(val) =>
+                        handleSettingChange("negativeMarking", val)
+                      }
+                    />
+                  </div>
+
+                  {formData.settings.negativeMarking && (
+                    <div className="ml-2 pl-4 border-l-2 border-primary/20 animate-in slide-in-from-top-2">
+                      <Label className="mb-2 block text-sm">
+                        Negative Mark Value (Per Wrong Answer)
+                      </Label>
+                      <div className="flex gap-2 flex-wrap">
+                        {[0.25, 0.5, 1.0].map((val) => (
+                          <div
+                            key={val}
+                            onClick={() =>
+                              handleSettingChange("negativeMarkValue", val)
+                            }
+                            className={`cursor-pointer px-4 py-2 rounded border text-sm font-medium transition-all ${
+                              formData.settings.negativeMarkValue === val
+                                ? "bg-primary text-white border-primary"
+                                : "bg-background hover:bg-muted"
+                            }`}
+                          >
+                            {val}
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-1 border rounded px-2 bg-background">
+                          <span className="text-muted-foreground text-xs">
+                            Custom:
+                          </span>
+                          <Input
+                            type="number"
+                            className="h-8 w-16 border-none focus-visible:ring-0 p-0 shadow-none"
+                            value={formData.settings.negativeMarkValue}
+                            onChange={(e) =>
+                              handleSettingChange(
+                                "negativeMarkValue",
+                                Number(e.target.value)
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Pass Marks */}
+                <div className="space-y-2 pt-2">
+                  <Label className="text-base font-medium">
+                    Pass Mark (Percentage %)
+                  </Label>
+                  <div className="flex items-center gap-4 bg-muted/30 p-3 rounded-lg border">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        value={formData.settings.passMarks}
+                        onChange={(e) =>
+                          handleSettingChange(
+                            "passMarks",
+                            Number(e.target.value)
+                          )
+                        }
+                        className="w-24 bg-background"
+                      />
+                      <span className="font-bold text-muted-foreground">%</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground border-l pl-4">
+                      Total Questions:{" "}
+                      <strong>{formData.selectedQuestionIds.length}</strong>.
+                      <br />
+                      Students need{" "}
+                      <strong className="text-primary">
+                        {Math.ceil(
+                          (formData.selectedQuestionIds.length *
+                            formData.settings.passMarks) /
+                            100
+                        )}
+                      </strong>{" "}
+                      marks to pass.
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Other Toggles */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                    <Label className="cursor-pointer" htmlFor="shuffle">
+                      Shuffle Questions
+                    </Label>
+                    <Switch
+                      id="shuffle"
+                      checked={formData.settings.shuffleQuestions}
+                      onCheckedChange={(val) =>
+                        handleSettingChange("shuffleQuestions", val)
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                    <Label className="cursor-pointer" htmlFor="instant-result">
+                      Show Result Immediately
+                    </Label>
+                    <Switch
+                      id="instant-result"
+                      checked={formData.settings.showResultInstant}
+                      onCheckedChange={(val) =>
+                        handleSettingChange("showResultInstant", val)
                       }
                     />
                   </div>

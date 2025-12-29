@@ -1,27 +1,40 @@
-// middleware.ts
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
+import { API_ACCESS_RULES, UI_ACCESS_RULES } from "@/lib/access-control";
 
 export default withAuth(
-  function middleware(req) {
+  function middleware() {
     return NextResponse.next();
   },
   {
     callbacks: {
       authorized: ({ token, req }) => {
         const { pathname } = req.nextUrl;
+        const method = req.method;
+
+        if (pathname.startsWith("/api")) {
+          const matchedRule = API_ACCESS_RULES.find((rule) => {
+            const isPathMatch = pathname.startsWith(rule.path);
+            const isMethodMatch =
+              rule.methods.includes("ALL") || rule.methods.includes(method);
+            return isPathMatch && isMethodMatch;
+          });
+
+          if (!matchedRule) return !!token;
+          if (matchedRule.roles.includes("public")) return true;
+          if (!token) return false;
+
+          return matchedRule.roles.includes(token.role as string);
+        }
 
         if (!token) return false;
 
-        if (
-          pathname.startsWith("/admin") ||
-          pathname.startsWith("/admin-dashboard")
-        ) {
-          return token.role === "admin";
-        }
+        const matchedUIRule = UI_ACCESS_RULES.find((rule) =>
+          pathname.startsWith(rule.path)
+        );
 
-        if (pathname.startsWith("/user-dashboard")) {
-          return token.role === "user";
+        if (matchedUIRule) {
+          return matchedUIRule.roles.includes(token.role as string);
         }
 
         return true;
@@ -30,11 +43,11 @@ export default withAuth(
   }
 );
 
-// কোন কোন পাথে এই রুলস অ্যাপ্লাই হবে
 export const config = {
   matcher: [
     "/admin/:path*",
     "/user-dashboard/:path*",
     "/admin-dashboard/:path*",
+    "/api/:path*",
   ],
 };

@@ -12,6 +12,14 @@ export interface IExam extends Document {
   isPremium: boolean;
   questions: mongoose.Types.ObjectId[]; // Array of Question IDs
   totalMarks: number;
+  // 🔥 Settings Interface Added
+  settings: {
+    negativeMarking: boolean;
+    negativeMarkValue: number; // 0.25, 0.50, etc.
+    passMarks: number; // Percentage (e.g., 33%)
+    shuffleQuestions: boolean;
+    showResultInstant: boolean;
+  };
 }
 
 const ExamSchema: Schema = new Schema(
@@ -35,6 +43,15 @@ const ExamSchema: Schema = new Schema(
     isPremium: { type: Boolean, default: false },
     questions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Question" }],
     totalMarks: { type: Number, default: 0 },
+
+    // 🔥 Settings Schema Added
+    settings: {
+      negativeMarking: { type: Boolean, default: false },
+      negativeMarkValue: { type: Number, default: 0.25 },
+      passMarks: { type: Number, default: 33 }, // Default 33% pass mark
+      shuffleQuestions: { type: Boolean, default: false },
+      showResultInstant: { type: Boolean, default: true },
+    },
   },
   { timestamps: true }
 );

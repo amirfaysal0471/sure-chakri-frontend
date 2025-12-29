@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import connectDB from "@/lib/db";
 import User from "@/app/models/User";
+
 export async function POST(req: Request) {
   try {
     const { name, email, password } = await req.json();
@@ -29,7 +30,8 @@ export async function POST(req: Request) {
       name,
       email,
       password: hashedPassword,
-      provider: "credentials", // Important
+      provider: "credentials",
+      plan: "free",
     });
 
     return NextResponse.json(
@@ -37,6 +39,7 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (error) {
+    console.error("Registration Error:", error); // কনসোলে এরর দেখার জন্য
     return NextResponse.json(
       { message: "Internal Server Error" },
       { status: 500 }
