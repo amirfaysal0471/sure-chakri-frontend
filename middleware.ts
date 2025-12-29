@@ -12,6 +12,7 @@ export default withAuth(
         const { pathname } = req.nextUrl;
         const method = req.method;
 
+        // --- 1. API Route Protection ---
         if (pathname.startsWith("/api")) {
           const matchedRule = API_ACCESS_RULES.find((rule) => {
             const isPathMatch = pathname.startsWith(rule.path);
@@ -24,9 +25,11 @@ export default withAuth(
           if (matchedRule.roles.includes("public")) return true;
           if (!token) return false;
 
-          return matchedRule.roles.includes(token.role as string);
+          // 🔥 FIX 1: 'as string' এর বদলে 'as any' ব্যবহার করুন
+          return matchedRule.roles.includes(token.role as any);
         }
 
+        // --- 2. UI Route Protection ---
         if (!token) return false;
 
         const matchedUIRule = UI_ACCESS_RULES.find((rule) =>
@@ -34,7 +37,8 @@ export default withAuth(
         );
 
         if (matchedUIRule) {
-          return matchedUIRule.roles.includes(token.role as string);
+          // 🔥 FIX 2: এখানেও 'as any' ব্যবহার করুন
+          return matchedUIRule.roles.includes(token.role as any);
         }
 
         return true;

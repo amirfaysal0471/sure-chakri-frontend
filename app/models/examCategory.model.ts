@@ -52,9 +52,8 @@ const ExamCategorySchema: Schema = new Schema(
   }
 );
 
-// ✅ FIX: 'next' প্যারামিটার বাদ দিন এবং async ফাংশন ব্যবহার করুন
-ExamCategorySchema.pre("save", async function () {
-  // Arrow function ব্যবহার করবেন না, কারণ 'this' দরকার
+// ✅ FIX: 'this' এর টাইপ নির্দিষ্ট করে দেওয়া হয়েছে (this: IExamCategory)
+ExamCategorySchema.pre("save", async function (this: IExamCategory) {
   if (this.isModified("name")) {
     this.slug = this.name
       .toLowerCase()
@@ -63,7 +62,6 @@ ExamCategorySchema.pre("save", async function () {
       .replace(/[\s_-]+/g, "-")
       .replace(/^-+|-+$/g, "");
   }
-  // next() কল করার দরকার নেই, ফাংশন শেষ হলেই কাজ হবে
 });
 
 const ExamCategory: Model<IExamCategory> =

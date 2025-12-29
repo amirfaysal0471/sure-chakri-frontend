@@ -25,13 +25,16 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
+// 🔥 FIX: Interface synchronized with page.tsx
 interface Category {
   _id: string;
   name: string;
-  slug: string;
+  slug?: string;
+  description?: string; // Added to match parent
   color: string;
   priority: number;
   isActive: boolean;
+  icon: string; // Added to match parent (Required field causing the error)
 }
 
 interface CategoryTableProps {
@@ -54,8 +57,8 @@ export function CategoryTable({
   onToggleStatus,
 }: CategoryTableProps) {
   const filteredData = useMemo(() => {
-    // 🔥 FIX: Ensure categories is strictly an array before filtering
-    if (!Array.isArray(categories)) return [];
+    // Safety check
+    if (!categories || !Array.isArray(categories)) return [];
 
     return categories.filter((cat) =>
       cat.name.toLowerCase().includes(search.toLowerCase())
@@ -133,13 +136,13 @@ export function CategoryTable({
                       <div className="flex flex-col">
                         <span className="font-medium">{category.name}</span>
                         <span className="text-xs text-muted-foreground md:hidden">
-                          {category.slug}
+                          {category.slug || "-"}
                         </span>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
-                    {category.slug}
+                    {category.slug || "-"}
                   </TableCell>
                   <TableCell className="text-center">
                     {category.priority}

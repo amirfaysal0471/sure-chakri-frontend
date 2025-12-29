@@ -1,18 +1,17 @@
 import PricingPlan, { IPricingPlan } from "@/app/models/pricing.model";
-import connectDB from "@/lib/db"; // Ensure you have your DB connection file
+import connectDB from "@/lib/db";
 
 // Get All Plans (Sorted by Order)
 export const getPricingPlans = async () => {
   await connectDB();
   const plans = await PricingPlan.find().sort({ order: 1 }).lean();
-  // Convert _id to string for frontend compatibility
   return plans.map((plan: any) => ({
     ...plan,
     id: plan._id.toString(),
     _id: plan._id.toString(),
     features: plan.features.map((f: any) => ({
       ...f,
-      id: f._id ? f._id.toString() : Date.now().toString(), // Handle feature IDs
+      id: f._id ? f._id.toString() : Date.now().toString(),
     })),
   }));
 };
@@ -20,7 +19,6 @@ export const getPricingPlans = async () => {
 // Create New Plan
 export const createPricingPlan = async (data: Partial<IPricingPlan>) => {
   await connectDB();
-  // Get the highest order to put the new plan at the end
   const lastPlan = await PricingPlan.findOne().sort({ order: -1 });
   const newOrder = lastPlan && lastPlan.order ? lastPlan.order + 1 : 0;
 
@@ -50,12 +48,17 @@ export const deletePricingPlan = async (id: string) => {
 // Reorder Plans (Bulk Update)
 export const reorderPricingPlans = async (orderedIds: string[]) => {
   await connectDB();
+
   const bulkOps = orderedIds.map((id, index) => ({
     updateOne: {
-      filter: { _id: id },
+      // 🔥 FIX: 'id' কে 'any' হিসেবে কাস্ট করা হয়েছে টাইপ এরর এড়াতে
+      filter: { _id: id as any },
       update: { $set: { order: index } },
     },
   }));
-  await PricingPlan.bulkWrite(bulkOps);
+
+  // অথবা এখানে 'bulkOps as any' ব্যবহার করা যেতে পারে
+  await PricingPlan.bulkWrite(bulkOps as any);
+
   return true;
 };

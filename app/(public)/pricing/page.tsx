@@ -45,7 +45,6 @@ export default function PricingSection() {
 
       <div className="container mx-auto px-4 md:px-6">
         {/* --- Header Section --- */}
-        {/* 🔥 Fix: Increased margin-bottom (mb-16 md:mb-24) to prevent badges from overlapping the toggle */}
         <div className="text-center max-w-3xl mx-auto mb-16 md:mb-24 space-y-4">
           <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight text-foreground">
             Simple Pricing, <span className="text-primary">Maximum Value</span>
@@ -96,7 +95,6 @@ export default function PricingSection() {
             </p>
           </div>
         ) : (
-          /* 🔥 Fix: items-stretch ensures all cards are same height */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-10 max-w-7xl mx-auto items-stretch">
             {plans.map((plan: any) => {
               const monthlyPrice = plan.price;
@@ -108,16 +106,14 @@ export default function PricingSection() {
                 ? displayMonthlyEquivalent
                 : monthlyPrice;
 
-              const isActivePlan = session && userPlan === plan.planId;
+              // 🔥 FIX HERE: Added !! before session to force boolean type
+              const isActivePlan = !!session && userPlan === plan.planId;
 
               return (
                 <Card
                   key={plan._id}
                   className={cn(
                     "relative flex flex-col w-full h-full transition-all duration-300",
-                    // 🔥 MAJOR DESKTOP FIX:
-                    // scale-100 for Mobile (No zoom)
-                    // scale-105 for Desktop (Slight zoom, NOT 110 which was too big)
                     isActivePlan
                       ? "border-green-500 ring-2 ring-green-500 shadow-xl bg-green-50/50 z-20 scale-100 md:scale-105 transform-gpu"
                       : plan.isPopular
@@ -177,7 +173,6 @@ export default function PricingSection() {
                     )}
                   </CardHeader>
 
-                  {/* 🔥 Fix: flex-1 pushes footer to bottom */}
                   <CardContent className="flex-1 px-6 md:px-8">
                     <div className="w-full h-px bg-border/60 mb-6"></div>
                     <ul className="space-y-4 text-sm">

@@ -26,8 +26,6 @@ import { useData } from "@/app/hooks/use-data";
 export default function PricingSection() {
   const [isYearly, setIsYearly] = useState(false);
   const { data: session } = useSession();
-
-  // ইউজারের বর্তমান প্ল্যান (default "free")
   const userPlan = session?.user?.plan || "free";
 
   const { data: responseData, isLoading } = useData<any>(
@@ -47,7 +45,6 @@ export default function PricingSection() {
 
       <div className="container mx-auto px-4 md:px-6">
         {/* --- Header Section --- */}
-        {/* 🔥 Fix: Added more bottom margin (mb-16 md:mb-24) to prevent badges from hitting the toggle */}
         <div className="text-center max-w-3xl mx-auto mb-16 md:mb-24 space-y-4">
           <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight text-foreground">
             Simple Pricing, <span className="text-primary">Maximum Value</span>
@@ -109,16 +106,14 @@ export default function PricingSection() {
                 ? displayMonthlyEquivalent
                 : monthlyPrice;
 
-              const isActivePlan = session && userPlan === plan.planId;
+              // 🔥 FIX HERE: Added !! before session to ensure boolean type
+              const isActivePlan = !!session && userPlan === plan.planId;
 
               return (
                 <Card
                   key={plan._id}
                   className={cn(
                     "relative flex flex-col w-full h-full transition-all duration-300",
-                    // 🔥 MAJOR FIX HERE for Desktop:
-                    // Mobile: scale-100 (No zoom)
-                    // Desktop: scale-105 (Slight zoom, NOT 110 which was breaking layout)
                     isActivePlan
                       ? "border-green-500 ring-2 ring-green-500 shadow-xl bg-green-50/50 z-20 scale-100 md:scale-105 transform-gpu"
                       : plan.isPopular
