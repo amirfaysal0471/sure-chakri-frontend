@@ -36,7 +36,7 @@ import {
   Plus,
   List,
   CheckCircle2,
-  Settings, // 🔥 Icon Import
+  Settings,
 } from "lucide-react";
 
 interface ModalProps {
@@ -71,7 +71,6 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
     : questionsData?.data?.questions || [];
 
   // --- 2. STATES ---
-  // 🔥 'settings' tab added
   const [activeTab, setActiveTab] = useState<"select" | "manual" | "settings">(
     "select"
   );
@@ -79,6 +78,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
   const [formData, setFormData] = useState({
     title: "",
     topic: "",
+    syllabus: "", // 🔥 Added Syllabus Field
     examDate: "",
     startTime: "",
     endTime: "",
@@ -87,7 +87,6 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
     status: "Draft",
     isPremium: false,
     selectedQuestionIds: [] as string[],
-    // 🔥 New Settings State
     settings: {
       negativeMarking: false,
       negativeMarkValue: 0.25,
@@ -153,7 +152,6 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
     });
   };
 
-  // 🔥 Helper to update settings
   const handleSettingChange = (
     key: keyof typeof formData.settings,
     value: any
@@ -208,16 +206,14 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
       return toast.warning("Please fill required fields (*)");
     }
     const payload = {
-      ...formData,
+      ...formData, // Syllabus automatically included here
       questions: formData.selectedQuestionIds,
       totalMarks: formData.selectedQuestionIds.length,
-      // Settings are automatically included via spread ...formData
     };
     createExamMutation.mutate(payload);
   };
 
   const handleSaveManualQuestion = () => {
-    // ... (same manual question logic)
     if (!manualQData.questionText || manualQData.correctAnswer === "") {
       return toast.warning("Question text and correct answer are required.");
     }
@@ -261,6 +257,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
               Exam Details
             </h3>
 
+            {/* Title */}
             <div className="space-y-2">
               <Label>Exam Title *</Label>
               <Input
@@ -272,18 +269,32 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
               />
             </div>
 
+            {/* Topic */}
             <div className="space-y-2">
-              <Label>Topic / Syllabus *</Label>
-              <Textarea
-                placeholder="Ex: Bangla, English, Math..."
+              <Label>Topic / Subject *</Label>
+              <Input
+                placeholder="Ex: General Knowledge"
                 value={formData.topic}
                 onChange={(e) =>
                   setFormData({ ...formData, topic: e.target.value })
+                }
+              />
+            </div>
+
+            {/* 🔥 Syllabus Input Added */}
+            <div className="space-y-2">
+              <Label>Syllabus Details</Label>
+              <Textarea
+                placeholder="Ex: Chapter 1-5, Algebra, Liberation War..."
+                value={formData.syllabus}
+                onChange={(e) =>
+                  setFormData({ ...formData, syllabus: e.target.value })
                 }
                 className="min-h-[80px]"
               />
             </div>
 
+            {/* Category */}
             <div className="space-y-2">
               <Label>Exam Category *</Label>
               <Select
@@ -323,6 +334,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
               </Select>
             </div>
 
+            {/* Date & Duration */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date *</Label>
@@ -349,6 +361,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
               </div>
             </div>
 
+            {/* Time */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Start Time *</Label>
@@ -372,6 +385,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
               </div>
             </div>
 
+            {/* Status */}
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="space-y-2">
                 <Label>Status</Label>
@@ -432,7 +446,6 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                 >
                   <Plus size={14} /> Create New
                 </button>
-                {/* 🔥 Settings Tab Button */}
                 <button
                   onClick={() => setActiveTab("settings")}
                   className={`flex items-center gap-2 px-3 py-1.5 text-xs md:text-sm font-medium rounded-md transition-all ${
@@ -569,7 +582,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
                     Save & Select
                   </Button>
                 </div>
-                {/* ... Manual form content (same as previous) ... */}
+                {/* ... Manual Form ... */}
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <Label>Question Category *</Label>
@@ -662,7 +675,7 @@ export function CreateExamModal({ isOpen, onClose }: ModalProps) {
               </div>
             )}
 
-            {/* 🔥 TAB: EXAM SETTINGS (New Feature) */}
+            {/* TAB: EXAM SETTINGS */}
             {activeTab === "settings" && (
               <div className="flex-1 overflow-y-auto border rounded-md bg-background p-6 space-y-6">
                 <div className="flex items-center justify-between border-b pb-4">

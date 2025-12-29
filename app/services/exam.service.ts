@@ -47,3 +47,16 @@ export const deleteExam = async (id: string) => {
   const deletedExam = await Exam.findByIdAndDelete(id);
   return serialize(deletedExam);
 };
+
+export const getPublicExams = async () => {
+  await connectDB();
+
+  // 🔥 শুধুই পাবলিক ডাটা আনা হচ্ছে
+  const exams = await Exam.find({ status: { $ne: "Draft" } }) // ড্রাফট বাদে সব
+    .select("-questions") // ❌ প্রশ্ন লোড হবে না (নিরাপদ)
+    .populate("examCategoryId", "name icon color") // ক্যাটাগরি নাম সহ
+    .sort({ examDate: 1 }) // তারিখ অনুযায়ী সাজানো
+    .lean();
+
+  return serialize(exams);
+};

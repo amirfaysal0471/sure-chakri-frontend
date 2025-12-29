@@ -2,7 +2,8 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IExam extends Document {
   title: string;
-  topic: string; // Syllabus
+  topic: string; // Short Topic Name
+  syllabus?: string; // 🔥 Syllabus Added (Detailed description)
   examDate: Date;
   startTime: string;
   endTime: string;
@@ -12,11 +13,11 @@ export interface IExam extends Document {
   isPremium: boolean;
   questions: mongoose.Types.ObjectId[]; // Array of Question IDs
   totalMarks: number;
-  // 🔥 Settings Interface Added
+  // Settings Interface
   settings: {
     negativeMarking: boolean;
-    negativeMarkValue: number; // 0.25, 0.50, etc.
-    passMarks: number; // Percentage (e.g., 33%)
+    negativeMarkValue: number;
+    passMarks: number;
     shuffleQuestions: boolean;
     showResultInstant: boolean;
   };
@@ -26,6 +27,10 @@ const ExamSchema: Schema = new Schema(
   {
     title: { type: String, required: true },
     topic: { type: String, required: true },
+
+    // 🔥 Syllabus Field Added Here
+    syllabus: { type: String, default: "" },
+
     examDate: { type: Date, required: true },
     startTime: { type: String, required: true },
     endTime: { type: String, required: true },
@@ -44,11 +49,11 @@ const ExamSchema: Schema = new Schema(
     questions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Question" }],
     totalMarks: { type: Number, default: 0 },
 
-    // 🔥 Settings Schema Added
+    // Settings Schema
     settings: {
       negativeMarking: { type: Boolean, default: false },
       negativeMarkValue: { type: Number, default: 0.25 },
-      passMarks: { type: Number, default: 33 }, // Default 33% pass mark
+      passMarks: { type: Number, default: 33 },
       shuffleQuestions: { type: Boolean, default: false },
       showResultInstant: { type: Boolean, default: true },
     },

@@ -10,7 +10,7 @@ import {
   Plus,
   Search,
   Filter,
-  Settings, // 🔥 Icon Added
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -61,6 +61,7 @@ interface ExamData {
   _id: string;
   title: string;
   topic?: string;
+  syllabus?: string; // 🔥 Added Syllabus here
   examDate?: string | Date;
   startTime?: string;
   endTime?: string;
@@ -69,7 +70,6 @@ interface ExamData {
   status?: "Draft" | "Upcoming" | "Live";
   isPremium?: boolean;
   questions?: any[];
-  // 🔥 Settings added to interface
   settings?: {
     negativeMarking: boolean;
     negativeMarkValue: number;
@@ -88,6 +88,7 @@ interface UpdateModalProps {
 interface ExamFormData {
   title: string;
   topic: string;
+  syllabus: string; // 🔥 Added Syllabus here
   examDate: string;
   startTime: string;
   endTime: string;
@@ -96,7 +97,6 @@ interface ExamFormData {
   status: "Draft" | "Upcoming" | "Live";
   isPremium: boolean;
   selectedQuestionIds: string[];
-  // 🔥 Settings added to Form Data
   settings: {
     negativeMarking: boolean;
     negativeMarkValue: number;
@@ -123,6 +123,7 @@ interface ManualQuestionFormData {
 const INITIAL_FORM_DATA: ExamFormData = {
   title: "",
   topic: "",
+  syllabus: "", // 🔥 Initial Value
   examDate: "",
   startTime: "",
   endTime: "",
@@ -131,7 +132,6 @@ const INITIAL_FORM_DATA: ExamFormData = {
   status: "Draft",
   isPremium: false,
   selectedQuestionIds: [],
-  // 🔥 Default Settings
   settings: {
     negativeMarking: false,
     negativeMarkValue: 0.25,
@@ -183,7 +183,6 @@ export function UpdateExamModal({
     : allQuestionsData?.questions || [];
 
   // --- States ---
-  // 🔥 Added 'settings' to activeTab type
   const [activeTab, setActiveTab] = useState<"select" | "manual" | "settings">(
     "select"
   );
@@ -195,7 +194,7 @@ export function UpdateExamModal({
   const [qSearch, setQSearch] = useState("");
   const [qCategoryFilter, setQCategoryFilter] = useState("All");
 
-  // --- 🔥 FIX 1: Load Initial Data Correctly (Including Settings) ---
+  // --- 🔥 FIX 1: Load Initial Data Correctly (Including Settings & Syllabus) ---
   useEffect(() => {
     if (examData && isOpen) {
       const initialQuestionIds = (examData.questions || [])
@@ -208,6 +207,7 @@ export function UpdateExamModal({
       setFormData({
         title: examData.title || "",
         topic: examData.topic || "",
+        syllabus: examData.syllabus || "", // 🔥 Load Syllabus
         examDate: examData.examDate
           ? new Date(examData.examDate).toISOString().split("T")[0]
           : "",
@@ -313,7 +313,6 @@ export function UpdateExamModal({
   };
 
   const handleSaveManualQuestion = () => {
-    // ... existing manual question logic
     if (!manualQData.questionText || manualQData.correctAnswer === "") {
       return toast.warning("Question text and correct answer are required.");
     }
@@ -354,10 +353,9 @@ export function UpdateExamModal({
     }
 
     const payload = {
-      ...formData,
+      ...formData, // Syllabus included here automatically via spread
       questions: formData.selectedQuestionIds,
       totalMarks: formData.selectedQuestionIds.length,
-      // Settings are automatically included
     };
 
     updateMutation.mutate({ id: examData._id, data: payload });
@@ -391,10 +389,24 @@ export function UpdateExamModal({
                 onChange={(e) =>
                   setFormData({ ...formData, topic: e.target.value })
                 }
+                className="min-h-[60px]"
+              />
+            </div>
+
+            {/* 🔥 Syllabus Field Added */}
+            <div className="space-y-2">
+              <Label htmlFor="exam-syllabus">Syllabus Details</Label>
+              <Textarea
+                id="exam-syllabus"
+                placeholder="Ex: Chapter 1-5, Algebra, Liberation War..."
+                value={formData.syllabus}
+                onChange={(e) =>
+                  setFormData({ ...formData, syllabus: e.target.value })
+                }
                 className="min-h-[80px]"
               />
             </div>
-            {/* ... Other Inputs (Category, Date, etc.) ... */}
+
             <div className="space-y-2">
               <Label>Exam Category *</Label>
               <Select
@@ -538,7 +550,6 @@ export function UpdateExamModal({
                 >
                   <Plus size={14} /> New Question
                 </button>
-                {/* 🔥 Settings Tab Button Added */}
                 <button
                   type="button"
                   onClick={() => setActiveTab("settings")}

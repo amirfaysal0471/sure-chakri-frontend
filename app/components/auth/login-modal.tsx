@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// Google Icon Component
+// Google Icon
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg aria-hidden="true" viewBox="0 0 24 24" {...props}>
     <path
@@ -39,12 +39,20 @@ const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-export function LoginModal({ children }: { children?: React.ReactNode }) {
+interface LoginModalProps {
+  children?: React.ReactNode;
+  preventRedirect?: boolean;
+  onLoginSuccess?: () => void;
+}
+
+export function LoginModal({
+  children,
+  preventRedirect = false,
+  onLoginSuccess,
+}: LoginModalProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLoginView, setIsLoginView] = useState<boolean>(true);
-
-  // Messages States
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -55,7 +63,6 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
 
   const router = useRouter();
 
-  // Reset states when switching views or opening/closing modal
   useEffect(() => {
     if (open) {
       setError(null);
@@ -70,7 +77,11 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      await signIn("google", { callbackUrl: "/dashboard" });
+      // 🔥 FIX 1: Google লগইনের পর '/dashboard' এ পাঠাবে
+      // সেখানে আমরা রোল চেক করে রিডাইরেক্ট করব
+      await signIn("google", {
+        callbackUrl: preventRedirect ? window.location.href : "/dashboard",
+      });
     } catch (err) {
       setError("Something went wrong with Google Login");
       setIsLoading(false);
@@ -83,7 +94,6 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
     setError(null);
     setSuccess(null);
 
-    // Input Sanitization
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim();
     const cleanPassword = password;
@@ -95,7 +105,7 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
     }
 
     if (isLoginView) {
-      // --- LOGIN LOGIC ---
+      // --- LOGIN ---
       const res = await signIn("credentials", {
         email: cleanEmail,
         password: cleanPassword,
@@ -107,19 +117,24 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
         setIsLoading(false);
       } else {
         const session = await getSession();
-        setOpen(false); // Close modal
+        setOpen(false);
 
-        // --- FIX: Using 'as any' to bypass TypeScript checking for 'role' ---
-        // This solves the "Property 'role' does not exist" error
-        if ((session?.user as any)?.role === "admin") {
-          router.push("/admin-dashboard");
+        // 🔥 FIX 2: Credentials লগইনের পর ম্যানুয়ালি রোল চেক করে রিডাইরেক্ট
+        if (!preventRedirect) {
+          if ((session?.user as any)?.role === "admin") {
+            router.push("/admin-dashboard");
+          } else {
+            router.push("/user-dashboard");
+          }
         } else {
-          router.push("/user-dashboard");
+          // Exam Page এ থাকলে রিফ্রেশ করবে শুধু
+          router.refresh();
         }
-        router.refresh();
+
+        if (onLoginSuccess) onLoginSuccess();
       }
     } else {
-      // --- REGISTRATION LOGIC ---
+      // --- REGISTER ---
       try {
         const res = await fetch("/api/auth/register", {
           method: "POST",
@@ -136,9 +151,29 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
         if (!res.ok) {
           setError(data.message || "Registration failed.");
         } else {
-          setSuccess("Account created successfully! Please log in.");
-          setIsLoginView(true);
-          setPassword("");
+          setSuccess("Account created! Logging you in...");
+
+          // Auto Login
+          const loginRes = await signIn("credentials", {
+            email: cleanEmail,
+            password: cleanPassword,
+            redirect: false,
+          });
+
+          if (!loginRes?.error) {
+            setOpen(false);
+
+            // Register এর পর সরাসরি ইউজার ড্যাশবোর্ডে
+            if (!preventRedirect) {
+              router.push("/user-dashboard");
+            } else {
+              router.refresh();
+            }
+
+            if (onLoginSuccess) onLoginSuccess();
+          } else {
+            setIsLoginView(true);
+          }
         }
       } catch (error) {
         setError("Network error. Please try again later.");
@@ -169,7 +204,6 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
         </div>
 
         <div className="p-8 pt-6 space-y-6 bg-white dark:bg-slate-950">
-          {/* Social Auth */}
           <div className="flex flex-col gap-3">
             <Button
               variant="outline"
@@ -197,7 +231,6 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
             </div>
           </div>
 
-          {/* --- Error Message Display --- */}
           {error && (
             <div className="bg-red-50 text-red-600 px-4 py-3 rounded-md text-sm flex items-center gap-2 border border-red-200 animate-in fade-in slide-in-from-top-1">
               <AlertCircle size={16} />
@@ -205,7 +238,6 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
             </div>
           )}
 
-          {/* --- Success Message Display --- */}
           {success && (
             <div className="bg-green-50 text-green-600 px-4 py-3 rounded-md text-sm flex items-center gap-2 border border-green-200 animate-in fade-in slide-in-from-top-1">
               <CheckCircle size={16} />
@@ -213,7 +245,6 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
             </div>
           )}
 
-          {/* Email Form */}
           <form className="space-y-4" onSubmit={handleSubmit}>
             {!isLoginView && (
               <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
@@ -272,7 +303,6 @@ export function LoginModal({ children }: { children?: React.ReactNode }) {
             </Button>
           </form>
 
-          {/* Toggle Login/Signup */}
           <p className="px-8 text-center text-sm text-muted-foreground">
             {isLoginView
               ? "Don't have an account? "

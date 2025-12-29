@@ -42,6 +42,12 @@ export const API_ACCESS_RULES: RouteRule[] = [
     methods: ["ALL"],
     roles: ["admin"],
   },
+
+  {
+    path: "/api/exams/public",
+    methods: ["GET"],
+    roles: ["public"], // লগইন ছাড়াই এক্সেস পাবে
+  },
 ];
 
 // 🔥 UI পেজের এক্সেস রুলস
