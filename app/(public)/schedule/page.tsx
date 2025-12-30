@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
@@ -18,6 +17,7 @@ import {
   Trophy,
   X,
   ChevronRight,
+  FileText,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,16 +25,56 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useData } from "@/app/hooks/use-data";
 import { LoginModal } from "@/app/components/auth/login-modal";
+
+// --- Types ---
+interface ExamSettings {
+  passMarks?: number;
+  negativeMarking?: boolean;
+  negativeMarkValue?: number;
+}
+
+interface ExamCategory {
+  name: string;
+}
+
+interface Exam {
+  _id: string;
+  title: string;
+  topic: string;
+  examDate: string;
+  startTime: string;
+  endTime: string;
+  status: "Upcoming" | "Live" | "Ended";
+  duration: number;
+  totalMarks: number;
+  isPremium: boolean;
+  syllabus?: string;
+  examCategoryId?: ExamCategory;
+  settings?: ExamSettings;
+}
+
+interface ApiResponse {
+  data: Exam[];
+}
 
 export default function PublicSchedulePage() {
   const [isMounted, setIsMounted] = useState(false);
   const [date, setDate] = useState<Date | undefined>(undefined);
+  const [now, setNow] = useState<Date>(new Date());
 
-  const { data: responseData, isLoading } = useData<any>(
+  const { data: responseData, isLoading } = useData<ApiResponse>(
     ["public-exams-schedule"],
     "/api/exams/public"
   );
@@ -43,41 +83,82 @@ export default function PublicSchedulePage() {
 
   useEffect(() => {
     setIsMounted(true);
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
   }, []);
 
-  const filteredByDate = date
-    ? allExams.filter((exam: any) => {
+  // Stabilize function reference with useCallback to allow safe usage in useMemo
+  const getDynamicStatus = useCallback(
+    (exam: Exam): "Upcoming" | "Live" | "Ended" => {
+      try {
         const examDate = new Date(exam.examDate);
-        return (
-          examDate.getDate() === date.getDate() &&
-          examDate.getMonth() === date.getMonth() &&
-          examDate.getFullYear() === date.getFullYear()
-        );
-      })
-    : allExams;
 
-  const upcomingExams = filteredByDate.filter(
-    (e: any) => e.status === "Upcoming" || e.status === "Live"
+        const [startH, startM] = exam.startTime.split(":");
+        const startDateTime = new Date(examDate);
+        startDateTime.setHours(Number(startH), Number(startM), 0);
+
+        const [endH, endM] = exam.endTime.split(":");
+        const endDateTime = new Date(examDate);
+        endDateTime.setHours(Number(endH), Number(endM), 0);
+
+        if (now > endDateTime) return "Ended";
+        if (now >= startDateTime && now <= endDateTime) return "Live";
+        return "Upcoming";
+      } catch (error) {
+        return exam.status;
+      }
+    },
+    [now]
   );
 
-  const pastExams = filteredByDate.filter((e: any) => e.status === "Ended");
-  const currentLiveExam = allExams.find((e: any) => e.status === "Live");
+  const filteredByDate = useMemo(() => {
+    if (!date) return allExams;
+    return allExams.filter((exam) => {
+      const examDate = new Date(exam.examDate);
+      return (
+        examDate.getDate() === date.getDate() &&
+        examDate.getMonth() === date.getMonth() &&
+        examDate.getFullYear() === date.getFullYear()
+      );
+    });
+  }, [date, allExams]);
+
+  const { upcomingExams, pastExams, currentLiveExam } = useMemo(() => {
+    const upcoming: Exam[] = [];
+    const past: Exam[] = [];
+
+    filteredByDate.forEach((exam) => {
+      const status = getDynamicStatus(exam);
+      if (status === "Live" || status === "Upcoming") {
+        upcoming.push(exam);
+      } else if (status === "Ended") {
+        past.push(exam);
+      }
+    });
+
+    // Find first live exam from all available exams (not just filtered)
+    const live = allExams.find((e) => getDynamicStatus(e) === "Live");
+
+    return {
+      upcomingExams: upcoming,
+      pastExams: past,
+      currentLiveExam: live,
+    };
+  }, [filteredByDate, allExams, getDynamicStatus]);
 
   if (!isMounted) return null;
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans pb-20">
-      {/* --- 1. Dynamic Hero Section --- */}
+      {/* --- Hero Section --- */}
       <section className="bg-muted/30 border-b py-12 md:py-20 px-4 md:px-6 relative overflow-hidden">
         <div className="container mx-auto max-w-7xl">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-            {/* Text Content */}
+            {/* Left: Text Content */}
             <div className="space-y-6">
               <Badge variant="secondary" className="w-fit">
                 <Users className="w-3.5 h-3.5 mr-2" />
-                {allExams.length > 0
-                  ? `${allExams.length}+ Active Exams`
-                  : "Exam Schedule"}
+                {upcomingExams.length} Active Exams
               </Badge>
 
               <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight">
@@ -86,8 +167,8 @@ export default function PublicSchedulePage() {
               </h1>
 
               <p className="text-base md:text-lg text-muted-foreground leading-relaxed max-w-lg">
-                Stay disciplined with our strict timing system. Check the
-                calendar below and prepare for your next challenge.
+                Check the schedule below. Exams automatically move to archive
+                after the ending time.
               </p>
 
               <div className="flex flex-wrap gap-4">
@@ -101,13 +182,10 @@ export default function PublicSchedulePage() {
                 >
                   View Schedule <ChevronRight className="ml-2 w-4 h-4" />
                 </Button>
-                <Button size="lg" variant="outline" className="font-semibold">
-                  Download Routine
-                </Button>
               </div>
             </div>
 
-            {/* Dynamic Live Card */}
+            {/* Right: Dynamic Live Card */}
             <div className="flex justify-center lg:justify-end">
               <Card className="w-full max-w-sm bg-background shadow-2xl border-primary/20 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <CardHeader className="bg-muted/40 border-b pb-4">
@@ -146,12 +224,18 @@ export default function PublicSchedulePage() {
                         <span>Status</span>
                         <Badge
                           variant={currentLiveExam ? "default" : "secondary"}
+                          className={
+                            currentLiveExam
+                              ? "bg-green-600 hover:bg-green-700"
+                              : ""
+                          }
                         >
                           {currentLiveExam ? "Live Now" : "Upcoming"}
                         </Badge>
                       </div>
                       <ExamActionButton
                         exam={currentLiveExam || upcomingExams[0]}
+                        dynamicStatus={currentLiveExam ? "Live" : "Upcoming"}
                       />
                     </>
                   ) : (
@@ -166,7 +250,7 @@ export default function PublicSchedulePage() {
         </div>
       </section>
 
-      {/* --- 2. Main Content Layout --- */}
+      {/* --- Main Content --- */}
       <div
         id="schedule"
         className="container mx-auto px-4 md:px-6 max-w-7xl mt-12"
@@ -178,7 +262,8 @@ export default function PublicSchedulePage() {
               <Zap className="h-4 w-4 text-primary" />
               <AlertTitle>Strict Timing</AlertTitle>
               <AlertDescription className="text-xs text-muted-foreground">
-                Exam gates close automatically after the specific entry time.
+                Exams will strictly follow the schedule. Once ended, they move
+                to archive.
               </AlertDescription>
             </Alert>
 
@@ -207,11 +292,11 @@ export default function PublicSchedulePage() {
                     onSelect={setDate}
                     className="rounded-md border shadow-sm"
                     modifiers={{
-                      hasExam: (date) =>
+                      hasExam: (d) =>
                         allExams.some(
-                          (exam: any) =>
+                          (exam) =>
                             new Date(exam.examDate).toDateString() ===
-                            date.toDateString()
+                            d.toDateString()
                         ),
                     }}
                     modifiersStyles={{
@@ -223,9 +308,6 @@ export default function PublicSchedulePage() {
                       },
                     }}
                   />
-                </div>
-                <div className="bg-muted/30 p-3 text-center text-xs text-muted-foreground border-t">
-                  Underlined dates indicate scheduled exams.
                 </div>
               </CardContent>
             </Card>
@@ -249,28 +331,23 @@ export default function PublicSchedulePage() {
             </Card>
           </div>
 
-          {/* Right Side */}
+          {/* Right Side: Tabs */}
           <div className="lg:col-span-8">
             <Tabs defaultValue="upcoming" className="w-full">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-2xl font-bold tracking-tight">
                     {date
-                      ? `Schedule: ${date.toLocaleDateString(undefined, {
-                          month: "long",
-                          day: "numeric",
-                        })}`
+                      ? `Schedule: ${date.toLocaleDateString()}`
                       : "All Schedules"}
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    {date
-                      ? `Found ${filteredByDate.length} exams for this date.`
-                      : "Browse upcoming and past exams."}
+                    Browse exams by status.
                   </p>
                 </div>
                 <TabsList>
-                  <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
-                  <TabsTrigger value="archive">Archive</TabsTrigger>
+                  <TabsTrigger value="upcoming">Upcoming & Live</TabsTrigger>
+                  <TabsTrigger value="archive">Archive (Ended)</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -287,8 +364,12 @@ export default function PublicSchedulePage() {
                 <>
                   <TabsContent value="upcoming" className="space-y-4">
                     {upcomingExams.length > 0 ? (
-                      upcomingExams.map((exam: any) => (
-                        <PublicExamCard key={exam._id} exam={exam} />
+                      upcomingExams.map((exam) => (
+                        <PublicExamCard
+                          key={exam._id}
+                          exam={exam}
+                          dynamicStatus={getDynamicStatus(exam)}
+                        />
                       ))
                     ) : (
                       <EmptyState
@@ -300,8 +381,12 @@ export default function PublicSchedulePage() {
 
                   <TabsContent value="archive" className="space-y-4">
                     {pastExams.length > 0 ? (
-                      pastExams.map((exam: any) => (
-                        <PublicExamCard key={exam._id} exam={exam} />
+                      pastExams.map((exam) => (
+                        <PublicExamCard
+                          key={exam._id}
+                          exam={exam}
+                          dynamicStatus="Ended"
+                        />
                       ))
                     ) : (
                       <div className="text-center py-12 border rounded-lg bg-muted/10">
@@ -321,47 +406,33 @@ export default function PublicSchedulePage() {
   );
 }
 
-// --- Action Button ---
-function ExamActionButton({ exam }: { exam: any }) {
+// --- Helper Components ---
+
+function ExamActionButton({
+  exam,
+  dynamicStatus,
+}: {
+  exam: Exam;
+  dynamicStatus?: string;
+}) {
   const { data: session } = useSession();
   const router = useRouter();
-
-  const getFormattedSchedule = () => {
-    try {
-      const dateObj = new Date(exam.examDate);
-      const [hours, minutes] = exam.startTime.split(":");
-      dateObj.setHours(Number(hours));
-      dateObj.setMinutes(Number(minutes));
-
-      return dateObj.toLocaleString("en-US", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
-    } catch (e) {
-      return `${new Date(exam.examDate).toLocaleDateString()} at ${
-        exam.startTime
-      }`;
-    }
-  };
+  const currentStatus = dynamicStatus || exam.status;
 
   const handleStartExam = () => {
-    if (exam.status === "Upcoming") {
+    if (currentStatus === "Upcoming") {
       return toast.warning("Exam has not started yet.", {
-        description: `Starts at: ${getFormattedSchedule()}`,
+        description: `Starts at: ${exam.startTime}`,
       });
     }
 
-    if (exam.status === "Live") {
+    if (currentStatus === "Live") {
       toast.success("Entering Exam Hall...", {
         description: "Good luck!",
       });
       router.push(`/user-dashboard/exams/${exam._id}`);
     } else {
-      toast.error("This exam is not accessible right now.");
+      toast.error("This exam has ended.");
     }
   };
 
@@ -379,13 +450,13 @@ function ExamActionButton({ exam }: { exam: any }) {
     <Button
       className="w-full sm:w-auto font-bold shadow-sm"
       onClick={handleStartExam}
+      disabled={currentStatus === "Ended"}
     >
-      Start Exam
+      {currentStatus === "Ended" ? "Exam Ended" : "Start Exam"}
     </Button>
   );
 }
 
-// --- Empty State ---
 function EmptyState({
   date,
   reset,
@@ -400,9 +471,7 @@ function EmptyState({
       </div>
       <h3 className="font-semibold text-lg">No exams found</h3>
       <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-        {date
-          ? "There are no exams scheduled for this specific date."
-          : "There are no upcoming exams at the moment."}
+        {date ? "No exams for this date." : "No upcoming exams."}
       </p>
       {date && (
         <Button variant="link" onClick={reset} className="mt-2">
@@ -413,26 +482,39 @@ function EmptyState({
   );
 }
 
-// --- 🔥 Updated Exam Card with Start & End Time ---
-function PublicExamCard({ exam }: { exam: any }) {
-  const isLive = exam.status === "Live";
-  const isClosed = exam.status === "Ended";
+function PublicExamCard({
+  exam,
+  dynamicStatus,
+}: {
+  exam: Exam;
+  dynamicStatus: string;
+}) {
+  const isLive = dynamicStatus === "Live";
+  const isClosed = dynamicStatus === "Ended";
 
   const examDateObj = new Date(exam.examDate);
   const isToday = new Date().toDateString() === examDateObj.toDateString();
 
-  // 🔥 Helper to format HH:MM to 12h AM/PM
+  // Format Date: "30 Dec 2025"
+  const formattedDate = examDateObj.toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  // Format Time: "1.00 PM" (Dot instead of Colon)
   const formatTime = (time: string) => {
     if (!time) return "";
     const [h, m] = time.split(":");
     const d = new Date();
     d.setHours(Number(h));
     d.setMinutes(Number(m));
-    return d.toLocaleTimeString("en-US", {
+    const timeString = d.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
     });
+    return timeString.replace(":", ".");
   };
 
   return (
@@ -447,7 +529,7 @@ function PublicExamCard({ exam }: { exam: any }) {
     >
       <div className="flex flex-col md:flex-row">
         {/* Date Box */}
-        <div className="bg-muted/20 p-4 md:p-6 flex flex-row md:flex-col items-center justify-between md:justify-center gap-3 md:w-40 md:min-w-[160px] border-b md:border-b-0 md:border-r">
+        <div className="bg-muted/20 p-4 md:p-6 flex flex-row md:flex-col items-center justify-between md:justify-center gap-3 md:w-48 md:min-w-[190px] border-b md:border-b-0 md:border-r">
           <Badge
             variant="outline"
             className="bg-background shadow-sm truncate max-w-[120px]"
@@ -457,8 +539,9 @@ function PublicExamCard({ exam }: { exam: any }) {
 
           <div className="text-center">
             <span className="text-xs font-semibold text-muted-foreground block md:hidden">
-              {examDateObj.toLocaleDateString()}
+              {formattedDate}
             </span>
+
             <span
               className={`text-xl md:text-3xl font-black uppercase tracking-tight ${
                 isLive ? "text-green-600" : ""
@@ -471,19 +554,19 @@ function PublicExamCard({ exam }: { exam: any }) {
                     month: "short",
                   })}
             </span>
-            {/* 🔥 Desktop Time: Start - End */}
-            <span className="hidden md:block text-[10px] font-bold text-muted-foreground mt-1 bg-background px-2 py-1 rounded border whitespace-nowrap">
-              {formatTime(exam.startTime)} - {formatTime(exam.endTime)}
+
+            <span className="hidden md:block text-[10px] font-bold text-muted-foreground mt-2 bg-background px-2 py-1 rounded border whitespace-nowrap">
+              {formattedDate} <br /> {formatTime(exam.startTime)} -{" "}
+              {formatTime(exam.endTime)}
             </span>
           </div>
 
-          {/* 🔥 Mobile Time: Start - End */}
           <div className="md:hidden text-[10px] font-bold bg-background px-2 py-1 rounded border">
             {formatTime(exam.startTime)} - {formatTime(exam.endTime)}
           </div>
         </div>
 
-        {/* Content Box */}
+        {/* Content */}
         <div className="flex-1 p-4 md:p-6 flex flex-col gap-4">
           <div className="flex flex-wrap justify-between items-start gap-2">
             <h3 className="font-bold text-lg md:text-xl leading-tight group-hover:text-primary transition-colors">
@@ -491,7 +574,11 @@ function PublicExamCard({ exam }: { exam: any }) {
             </h3>
             {isLive ? (
               <Badge className="bg-green-600 hover:bg-green-700 animate-pulse">
-                LIVE
+                LIVE NOW
+              </Badge>
+            ) : isClosed ? (
+              <Badge variant="outline" className="text-muted-foreground">
+                Ended
               </Badge>
             ) : (
               <Badge
@@ -510,14 +597,37 @@ function PublicExamCard({ exam }: { exam: any }) {
           <div className="space-y-3">
             <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/20 p-2.5 rounded-md">
               <BookOpen className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
-              <div className="space-y-0.5">
+              <div className="space-y-1 w-full">
                 <span className="font-medium text-foreground block">
-                  {exam.topic}
+                  Topic: {exam.topic}
                 </span>
-                {exam.syllabus && (
-                  <p className="text-xs line-clamp-1 opacity-80">
-                    {exam.syllabus}
-                  </p>
+
+                {exam.syllabus ? (
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <button className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline font-medium mt-1 transition-all w-fit">
+                        <FileText className="w-3 h-3" />
+                        See Syllabus
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Exam Syllabus</DialogTitle>
+                        <DialogDescription>
+                          Topics covered in <strong>{exam.title}</strong>
+                        </DialogDescription>
+                      </DialogHeader>
+                      <ScrollArea className="max-h-[60vh] mt-2 pr-4">
+                        <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                          {exam.syllabus}
+                        </div>
+                      </ScrollArea>
+                    </DialogContent>
+                  </Dialog>
+                ) : (
+                  <span className="text-xs text-muted-foreground italic">
+                    No specific syllabus provided.
+                  </span>
                 )}
               </div>
             </div>
@@ -546,20 +656,7 @@ function PublicExamCard({ exam }: { exam: any }) {
           </div>
 
           <div className="pt-2 mt-auto">
-            {isLive ? (
-              <ExamActionButton exam={exam} />
-            ) : isClosed ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled
-                className="text-muted-foreground"
-              >
-                Exam Ended
-              </Button>
-            ) : (
-              <ExamActionButton exam={exam} />
-            )}
+            <ExamActionButton exam={exam} dynamicStatus={dynamicStatus} />
           </div>
         </div>
       </div>
