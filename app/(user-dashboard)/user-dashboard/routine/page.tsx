@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Clock,
-  BookOpen,
   FileText,
   PlayCircle,
   Timer,
@@ -16,6 +15,8 @@ import {
   CalendarDays,
   History,
   CheckCircle2,
+  Eye,
+  Lock,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,8 +33,17 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useData } from "@/app/hooks/use-data";
+import { useSession } from "next-auth/react";
 
 // --- Types ---
+
+interface ExamSettings {
+  passMarks?: number;
+  negativeMarking?: boolean;
+  negativeMarkValue?: number;
+}
+
 interface Exam {
   _id: string;
   title: string;
@@ -45,152 +55,47 @@ interface Exam {
   totalMarks: number;
   isPremium: boolean;
   syllabus?: string;
-  settings?: any;
+  settings?: ExamSettings;
 }
 
+interface ExamApiResponse {
+  success: boolean;
+  data: Exam[];
+  hasMore: boolean;
+  page: number;
+}
+
+interface UserResult {
+  exam: string | { _id: string };
+  _id: string;
+}
+
+interface ResultsApiResponse {
+  data: UserResult[];
+}
+
+type ExamStatus = "LIVE" | "UPCOMING" | "ENDED";
+type TabType = "upcoming" | "archive";
+
+// =========================================================
+// 1. MAIN PAGE COMPONENT
+// =========================================================
+
 export default function RoutinePage() {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState("upcoming");
-  const [now, setNow] = useState<Date>(new Date());
-
-  // --- States for Infinite Scroll ---
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // --- Real-time Clock (Every 30s) ---
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000); // 30s interval
-    return () => clearInterval(timer);
-  }, []);
-
-  // Observer Ref
-  const observer = useRef<IntersectionObserver | null>(null);
-  const lastExamRef = useCallback(
-    (node: HTMLDivElement) => {
-      if (isLoading) return;
-      if (observer.current) observer.current.disconnect();
-
-      observer.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && hasMore) {
-          setPage((prevPage) => prevPage + 1);
-        }
-      });
-
-      if (node) observer.current.observe(node);
-    },
-    [isLoading, hasMore]
-  );
-
-  // --- Fetch Data Function ---
-  const fetchExams = async (
-    pageNum: number,
-    type: string,
-    isNewTab = false
-  ) => {
-    setIsLoading(true);
-    try {
-      const res = await fetch(
-        `/api/exams/public?page=${pageNum}&limit=10&type=${type}`
-      );
-      const data = await res.json();
-
-      if (data.success) {
-        setExams((prev) => (isNewTab ? data.data : [...prev, ...data.data]));
-        setHasMore(data.hasMore);
-      }
-    } catch (error) {
-      console.error("Failed to load exams");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchExams(page, activeTab);
-  }, [page]);
-
-  useEffect(() => {
-    setExams([]);
-    setPage(1);
-    setHasMore(true);
-    fetchExams(1, activeTab, true);
-  }, [activeTab]);
-
-  // --- 🔥 Strict Status Helper ---
-  const getStatus = useCallback(
-    (exam: Exam) => {
-      try {
-        const examDate = new Date(exam.examDate);
-
-        const [startH, startM] = exam.startTime.split(":");
-        const startDateTime = new Date(examDate);
-        startDateTime.setHours(Number(startH), Number(startM), 0);
-
-        const [endH, endM] = exam.endTime.split(":");
-        const endDateTime = new Date(examDate);
-        endDateTime.setHours(Number(endH), Number(endM), 0);
-
-        if (now > endDateTime) return "ENDED";
-        if (now >= startDateTime && now <= endDateTime) return "LIVE";
-        return "UPCOMING";
-      } catch (e) {
-        return "UPCOMING";
-      }
-    },
-    [now]
-  );
-
-  // --- 🔥 Filter & Grouping Logic ---
-  const groupedExams = useMemo(() => {
-    // ১. প্রথমে বর্তমান সময়ের উপর ভিত্তি করে ফিল্টার করা হচ্ছে
-    const filteredList = exams.filter((exam) => {
-      const status = getStatus(exam);
-      if (activeTab === "upcoming") {
-        // Upcoming ট্যাবে শুধুমাত্র Upcoming বা Live এক্সাম থাকবে
-        return status === "UPCOMING" || status === "LIVE";
-      } else {
-        // Archive ট্যাবে শুধুমাত্র Ended এক্সাম থাকবে
-        return status === "ENDED";
-      }
-    });
-
-    // ২. ডেট অনুযায়ী গ্রুপ করা
-    const groups: { [key: string]: Exam[] } = {};
-    filteredList.forEach((exam) => {
-      const dateKey = new Date(exam.examDate).toISOString().split("T")[0];
-      if (!groups[dateKey]) groups[dateKey] = [];
-      groups[dateKey].push(exam);
-    });
-
-    // ৩. সর্টিং (Upcoming -> Ascending, Archive -> Descending)
-    const sortedKeys = Object.keys(groups).sort((a, b) => {
-      return activeTab === "archive"
-        ? new Date(b).getTime() - new Date(a).getTime()
-        : new Date(a).getTime() - new Date(b).getTime();
-    });
-
-    return sortedKeys.map((dateKey) => ({
-      date: dateKey,
-      exams: groups[dateKey],
-    }));
-  }, [exams, activeTab, getStatus]);
-
   return (
-    <div className="space-y-6 pb-24 max-w-3xl mx-auto">
+    <div className="mx-auto max-w-3xl space-y-6 pb-24">
       {/* Header */}
       <div className="flex flex-col gap-1 px-1">
         <h1 className="text-2xl font-bold tracking-tight">My Routine</h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           Your exam timeline & history.
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {/* Sticky Tabs */}
-        <div className="sticky top-[64px] z-30 bg-background/95 backdrop-blur py-2">
-          <TabsList className="grid w-full grid-cols-2 h-11 rounded-xl bg-muted/60 p-1">
+      {/* Tabs System */}
+      <Tabs defaultValue="upcoming" className="w-full">
+        <div className="sticky top-[64px] z-30 bg-background/95 py-2 backdrop-blur">
+          <TabsList className="grid h-11 w-full grid-cols-2 rounded-xl bg-muted/60 p-1">
             <TabsTrigger
               value="upcoming"
               className="rounded-lg text-xs font-bold data-[state=active]:shadow-sm"
@@ -206,97 +111,243 @@ export default function RoutinePage() {
           </TabsList>
         </div>
 
-        {/* Content Area */}
-        <div className="mt-4 space-y-6">
-          {groupedExams.length > 0
-            ? groupedExams.map((group) => (
-                <ExamGroupSection
-                  key={group.date}
-                  date={group.date}
-                  exams={group.exams}
-                  router={router}
-                  getStatus={getStatus}
-                />
-              ))
-            : !isLoading && <EmptyState type={activeTab} />}
+        {/* Isolated Components for State Management */}
+        <div className="mt-4 min-h-[300px]">
+          <TabsContent value="upcoming" className="mt-0">
+            <ExamListView type="upcoming" />
+          </TabsContent>
 
-          {/* Loading Indicator */}
-          <div
-            ref={lastExamRef}
-            className="flex justify-center py-4 min-h-[50px]"
-          >
-            {isLoading && (
-              <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                <Loader2 className="w-4 h-4 animate-spin" /> Loading more...
-              </div>
-            )}
-          </div>
+          <TabsContent value="archive" className="mt-0">
+            <ExamListView type="archive" />
+          </TabsContent>
         </div>
       </Tabs>
     </div>
   );
 }
 
-// --- Component: Date Group Section ---
-function ExamGroupSection({ date, exams, router, getStatus }: any) {
-  const formatDateHeader = (dateStr: string) => {
-    const d = new Date(dateStr);
+// =========================================================
+// 2. EXAM LIST VIEW (🔥 FIXED LOGIC)
+// =========================================================
+
+function ExamListView({ type }: { type: TabType }) {
+  const router = useRouter();
+  const { data: session } = useSession();
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [now, setNow] = useState<Date>(new Date());
+
+  const userPlan = session?.user?.plan || "free";
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const { data: responseData, isLoading } = useData<ExamApiResponse>(
+    [`routine`, type, page],
+    `/api/exams/public?page=${page}&limit=10&type=${type}`
+  );
+
+  const { data: resultsResponse } = useData<ResultsApiResponse>(
+    ["user-results-check-routine", session?.user?.id],
+    session?.user?.id ? `/api/results` : (null as any)
+  );
+
+  const userResults = resultsResponse?.data || [];
+
+  const examParticipationMap = useMemo(() => {
+    const map = new Map<string, string>();
+    userResults.forEach((result) => {
+      const examId =
+        typeof result.exam === "string" ? result.exam : result.exam._id;
+      map.set(examId, result._id);
+    });
+    return map;
+  }, [userResults]);
+
+  useEffect(() => {
+    if (responseData?.data) {
+      if (page === 1) {
+        setExams(responseData.data);
+      } else {
+        setExams((prev) => {
+          const newIds = new Set(responseData.data.map((e) => e._id));
+          const filteredPrev = prev.filter((e) => !newIds.has(e._id));
+          return [...filteredPrev, ...responseData.data];
+        });
+      }
+      setHasMore(responseData.hasMore);
+    }
+  }, [responseData, page]);
+
+  const observer = useRef<IntersectionObserver | null>(null);
+  const lastExamRef = useCallback(
+    (node: HTMLDivElement) => {
+      if (isLoading) return;
+      if (observer.current) observer.current.disconnect();
+
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          setPage((prev) => prev + 1);
+        }
+      });
+
+      if (node) observer.current.observe(node);
+    },
+    [isLoading, hasMore]
+  );
+
+  const getStatus = useCallback(
+    (exam: Exam): ExamStatus => {
+      try {
+        const examDate = new Date(exam.examDate);
+        const [startH, startM] = exam.startTime.split(":");
+        const startDateTime = new Date(examDate);
+        startDateTime.setHours(Number(startH), Number(startM), 0);
+
+        const [endH, endM] = exam.endTime.split(":");
+        const endDateTime = new Date(examDate);
+        endDateTime.setHours(Number(endH), Number(endM), 0);
+
+        if (now > endDateTime) return "ENDED";
+        if (now >= startDateTime && now <= endDateTime) return "LIVE";
+        return "UPCOMING";
+      } catch {
+        return "UPCOMING";
+      }
+    },
+    [now]
+  );
+
+  // --- Section Grouping Logic ---
+  const groupedExams = useMemo(() => {
+    const filtered = exams.filter((exam) => {
+      const status = getStatus(exam);
+      return type === "upcoming"
+        ? status === "UPCOMING" || status === "LIVE"
+        : status === "ENDED";
+    });
+
+    const groups = filtered.reduce((acc, exam) => {
+      const dateKey = new Date(exam.examDate).toDateString();
+      if (!acc[dateKey]) acc[dateKey] = [];
+      acc[dateKey].push(exam);
+      return acc;
+    }, {} as Record<string, Exam[]>);
+
+    const sortedDateKeys = Object.keys(groups).sort((a, b) => {
+      const dateA = new Date(a).getTime();
+      const dateB = new Date(b).getTime();
+      return type === "archive" ? dateB - dateA : dateA - dateB;
+    });
+
+    return sortedDateKeys.map((dateKey) => ({
+      dateLabel: dateKey,
+      items: groups[dateKey],
+    }));
+  }, [exams, type, getStatus]);
+
+  const getSectionTitle = (dateStr: string) => {
+    const date = new Date(dateStr);
     const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
 
-    if (d.toDateString() === today.toDateString()) return "Today";
-    if (d.toDateString() === tomorrow.toDateString()) return "Tomorrow";
+    if (date.toDateString() === today.toDateString()) return "Today";
+    if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
 
-    return d.toLocaleDateString("en-US", {
+    return date.toLocaleDateString("en-US", {
       weekday: "short",
       day: "numeric",
-      month: "short",
+      month: "long",
     });
   };
 
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 px-1">
-        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider bg-background">
-          {formatDateHeader(date)}
-        </h3>
-        <div className="h-[1px] bg-border flex-1" />
-      </div>
+  // 🔥 FIX: Check groupedExams length instead of raw exams length
+  // This ensures Empty State shows if filtering removed all items
+  const showEmptyState = !isLoading && groupedExams.length === 0;
 
-      <div className="grid gap-4">
-        {exams.map((exam: Exam) => (
-          <AppExamCard
-            key={exam._id}
-            exam={exam}
-            router={router}
-            status={getStatus(exam)}
-          />
-        ))}
+  if (showEmptyState) {
+    return <EmptyState type={type} />;
+  }
+
+  return (
+    <div className="space-y-8 duration-300 animate-in fade-in zoom-in">
+      {groupedExams.map((group) => (
+        <div key={group.dateLabel} className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-bold shadow-sm",
+                getSectionTitle(group.dateLabel) === "Today"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background text-muted-foreground"
+              )}
+            >
+              {getSectionTitle(group.dateLabel)}
+            </div>
+            <div className="h-[1px] flex-1 bg-border" />
+          </div>
+
+          <div className="grid gap-4">
+            {group.items.map((exam) => {
+              const resultId = examParticipationMap.get(exam._id);
+              return (
+                <AppExamCard
+                  key={exam._id}
+                  exam={exam}
+                  router={router}
+                  status={getStatus(exam)}
+                  hasParticipated={!!resultId}
+                  resultId={resultId}
+                  userPlan={userPlan}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      <div ref={lastExamRef} className="flex min-h-[40px] justify-center py-6">
+        {isLoading && (
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        )}
       </div>
     </div>
   );
 }
 
-// --- Component: App Style Exam Card ---
+// =========================================================
+// 3. EXAM CARD COMPONENT
+// =========================================================
+
 function AppExamCard({
   exam,
   router,
   status,
+  hasParticipated,
+  resultId,
+  userPlan,
 }: {
   exam: Exam;
-  router: any;
-  status: string;
+  router: ReturnType<typeof useRouter>;
+  status: ExamStatus;
+  hasParticipated: boolean;
+  resultId?: string;
+  userPlan: string;
 }) {
   const isLive = status === "LIVE";
   const isEnded = status === "ENDED";
 
-  // Format Time: 1.00 PM
+  const hasValidPlan = ["pro", "premium"].includes(userPlan);
+  const isLocked = exam.isPremium && !hasValidPlan;
+
   const formatTime = (time: string) => {
     const [h, m] = time.split(":");
     const d = new Date();
-    d.setHours(Number(h));
-    d.setMinutes(Number(m));
+    d.setHours(Number(h), Number(m));
     return d
       .toLocaleTimeString("en-US", {
         hour: "numeric",
@@ -306,19 +357,32 @@ function AppExamCard({
       .replace(":", ".");
   };
 
+  const handleStart = () => router.push(`/user-dashboard/exams/${exam._id}`);
+  const handleViewResult = () =>
+    router.push(`/user-dashboard/results/${resultId}`);
+  const handleWait = () =>
+    toast.info(`Exam starts at ${formatTime(exam.startTime)}`);
+  const handleUpgrade = () => router.push("/pricing");
+
   return (
     <Card
       className={cn(
-        "border-none shadow-sm relative overflow-hidden transition-all active:scale-[0.99]",
-        isLive
-          ? "bg-red-50/50 dark:bg-red-900/10 ring-1 ring-red-200"
+        "relative overflow-hidden border-none shadow-sm transition-all active:scale-[0.99]",
+        isLive && !hasParticipated && !isLocked
+          ? "bg-red-50/50 ring-1 ring-red-200 dark:bg-red-900/10"
+          : hasParticipated
+          ? "bg-green-50/30 ring-1 ring-green-200"
+          : isLocked
+          ? "bg-gray-50 ring-1 ring-gray-200 opacity-90"
           : "bg-card ring-1 ring-border/50"
       )}
     >
       <div
         className={cn(
-          "absolute left-0 top-0 bottom-0 w-1",
-          isLive
+          "absolute bottom-0 left-0 top-0 w-1",
+          hasParticipated
+            ? "bg-green-500"
+            : isLive && !isLocked
             ? "bg-red-500"
             : isEnded
             ? "bg-muted-foreground/30"
@@ -326,150 +390,179 @@ function AppExamCard({
         )}
       />
 
-      <CardContent className="p-4 pl-5 flex flex-col gap-3">
-        {/* Top: Tags */}
+      <CardContent className="flex flex-col gap-3 p-4 pl-5">
         <div className="flex justify-between items-start">
           <div className="flex gap-2">
             <Badge
               variant="outline"
-              className="bg-background/50 text-[10px] h-5 px-2 font-normal text-muted-foreground truncate max-w-[120px]"
+              className="h-5 max-w-[120px] truncate border-border bg-background/50 px-2 text-[10px] font-normal text-muted-foreground"
             >
               {exam.topic}
             </Badge>
             {exam.isPremium ? (
-              <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] h-5 px-2 gap-1">
-                <Crown className="w-3 h-3 fill-amber-700" /> Premium
+              <Badge className="h-5 gap-1 border-amber-200 bg-amber-100 px-2 text-[10px] text-amber-700">
+                <Crown className="h-3 w-3" /> Premium
               </Badge>
             ) : (
               <Badge
                 variant="secondary"
-                className="bg-green-100 text-green-700 text-[10px] h-5 px-2"
+                className="h-5 border-green-200 bg-green-100 px-2 text-[10px] text-green-700"
               >
                 Free
               </Badge>
             )}
           </div>
 
-          {/* Status Badge */}
-          {isLive ? (
-            <Badge className="bg-red-600 animate-pulse px-2 h-5 text-[10px]">
+          {hasParticipated ? (
+            <Badge className="h-5 bg-green-600 px-2 text-[10px]">Done</Badge>
+          ) : isLive ? (
+            <Badge className="h-5 animate-pulse bg-red-600 px-2 text-[10px]">
               LIVE NOW
             </Badge>
           ) : isEnded ? (
-            <Badge variant="secondary" className="px-2 h-5 text-[10px]">
+            <Badge variant="secondary" className="h-5 px-2 text-[10px]">
               Ended
             </Badge>
           ) : (
             <Badge
               variant="outline"
-              className="border-blue-200 text-blue-600 bg-blue-50 px-2 h-5 text-[10px]"
+              className="h-5 border-blue-200 px-2 text-[10px] text-blue-600"
             >
               Upcoming
             </Badge>
           )}
         </div>
 
-        {/* Title & Time */}
         <div>
-          <h3 className="font-bold text-base leading-snug line-clamp-2 mb-1">
-            {exam.title}
-          </h3>
+          <div className="flex items-center gap-2">
+            {isLocked && <Lock className="w-4 h-4 text-gray-400" />}
+            <h3 className="line-clamp-2 text-base font-bold leading-snug">
+              {exam.title}
+            </h3>
+          </div>
           <div
             className={cn(
-              "text-sm font-bold flex items-center gap-1.5",
-              isLive ? "text-red-600" : "text-foreground"
+              "flex items-center gap-1.5 text-sm font-bold",
+              isLive && !hasParticipated && !isLocked
+                ? "text-red-600"
+                : "text-foreground"
             )}
           >
-            <Clock className="w-3.5 h-3.5" />
+            <Clock className="h-3.5 w-3.5" />
             {formatTime(exam.startTime)} - {formatTime(exam.endTime)}
           </div>
         </div>
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-2 mt-1">
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/40 p-1.5 rounded border border-dashed">
-            <Timer className="w-3 h-3 text-blue-500" />{" "}
+          <div className="flex items-center gap-1.5 rounded border border-dashed bg-muted/40 p-1.5 text-[11px] text-muted-foreground">
+            <Timer className="h-3 w-3 text-blue-500" />{" "}
             <span className="font-medium">{exam.duration}m Time</span>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/40 p-1.5 rounded border border-dashed">
-            <Trophy className="w-3 h-3 text-amber-500" />{" "}
+          <div className="flex items-center gap-1.5 rounded border border-dashed bg-muted/40 p-1.5 text-[11px] text-muted-foreground">
+            <Trophy className="h-3 w-3 text-amber-500" />{" "}
             <span className="font-medium">{exam.totalMarks} Marks</span>
           </div>
           {exam.settings?.passMarks && (
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/40 p-1.5 rounded border border-dashed">
-              <CheckCircle2 className="w-3 h-3 text-green-600" /> Pass:{" "}
+            <div className="flex items-center gap-1.5 rounded border border-dashed bg-muted/40 p-1.5 text-[11px] text-muted-foreground">
+              <CheckCircle2 className="h-3 w-3 text-green-600" /> Pass:{" "}
               {exam.settings.passMarks}%
             </div>
           )}
           {exam.settings?.negativeMarking && (
-            <div className="flex items-center gap-1.5 text-[11px] text-red-600 bg-red-50/50 p-1.5 rounded border border-red-100">
-              <AlertTriangle className="w-3 h-3" /> -
+            <div className="flex items-center gap-1.5 rounded border border-red-100 bg-red-50/50 p-1.5 text-[11px] text-red-600">
+              <AlertTriangle className="h-3 w-3" /> -
               {exam.settings.negativeMarkValue} Neg.
             </div>
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-between mt-2 pt-3 border-t border-dashed">
-          {/* Syllabus */}
+        <div className="mt-2 flex items-center justify-between border-t border-dashed pt-3">
           {exam.syllabus ? (
             <Dialog>
               <DialogTrigger asChild>
-                <button className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors py-1">
-                  <FileText className="w-3.5 h-3.5" /> Syllabus
+                <button className="flex items-center gap-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary">
+                  <FileText className="h-3.5 w-3.5" /> Syllabus
                 </button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-md w-[90%] rounded-xl">
+              <DialogContent className="w-[90%] rounded-xl sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Exam Syllabus</DialogTitle>
                   <DialogDescription>
                     Overview for {exam.title}
                   </DialogDescription>
                 </DialogHeader>
-                <ScrollArea className="max-h-[50vh] mt-2 pr-2">
-                  <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed bg-muted/50 p-3 rounded-lg">
+                <ScrollArea className="mt-2 max-h-[50vh] pr-2">
+                  <div className="rounded-lg bg-muted/50 p-3 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
                     {exam.syllabus}
                   </div>
                 </ScrollArea>
               </DialogContent>
             </Dialog>
           ) : (
-            <span className="text-xs text-muted-foreground/50 italic">
+            <span className="text-xs italic text-muted-foreground/50">
               No syllabus
             </span>
           )}
 
-          {/* Action Button */}
           <div>
-            {isLive ? (
-              <Button
-                size="sm"
-                className="h-8 bg-red-600 hover:bg-red-700 font-bold px-4 text-xs rounded-full shadow-md"
-                onClick={() => router.push(`/user-dashboard/exams/${exam._id}`)}
-              >
-                Start <PlayCircle className="w-3 h-3 ml-1" />
-              </Button>
-            ) : isEnded ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 px-3 text-xs text-muted-foreground cursor-not-allowed"
-                disabled
-              >
-                Finished
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-8 px-4 text-xs rounded-full font-semibold text-blue-700 bg-blue-50"
-                onClick={() =>
-                  toast.info(`Exam starts at ${formatTime(exam.startTime)}`)
-                }
-              >
-                Wait <Timer className="w-3 h-3 ml-1" />
-              </Button>
-            )}
+            {(() => {
+              if (isLocked)
+                return (
+                  <Button
+                    size="sm"
+                    className="h-8 rounded-full bg-amber-500 hover:bg-amber-600 text-white px-3 text-xs font-bold"
+                    onClick={handleUpgrade}
+                  >
+                    <Lock className="mr-1 h-3 w-3" /> Unlock
+                  </Button>
+                );
+
+              if (hasParticipated)
+                return (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-full border-green-200 bg-green-50 px-3 text-xs font-bold text-green-700 hover:bg-green-100"
+                    onClick={handleViewResult}
+                  >
+                    View Result <Eye className="ml-1 h-3 w-3" />
+                  </Button>
+                );
+
+              if (isLive)
+                return (
+                  <Button
+                    size="sm"
+                    className="h-8 rounded-full bg-red-600 px-4 text-xs font-bold shadow-md hover:bg-red-700"
+                    onClick={handleStart}
+                  >
+                    Start <PlayCircle className="ml-1 h-3 w-3" />
+                  </Button>
+                );
+
+              if (isEnded)
+                return (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 cursor-not-allowed px-3 text-xs text-muted-foreground"
+                    disabled
+                  >
+                    Finished
+                  </Button>
+                );
+
+              return (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 rounded-full bg-blue-50 px-4 text-xs font-semibold text-blue-700"
+                  onClick={handleWait}
+                >
+                  Wait <Timer className="ml-1 h-3 w-3" />
+                </Button>
+              );
+            })()}
           </div>
         </div>
       </CardContent>
@@ -477,24 +570,28 @@ function AppExamCard({
   );
 }
 
-// --- Empty State ---
-function EmptyState({ type }: { type: string }) {
+// =========================================================
+// 4. EMPTY STATE (UPDATED MESSAGE)
+// =========================================================
+
+function EmptyState({ type }: { type: TabType }) {
+  const isUpcoming = type === "upcoming";
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4 text-center border-2 border-dashed rounded-xl bg-muted/5">
-      <div className="p-4 bg-muted rounded-full mb-4">
-        {type === "upcoming" ? (
-          <CalendarDays className="w-8 h-8 text-muted-foreground" />
+    <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed bg-muted/5 px-4 py-16 text-center">
+      <div className="mb-4 rounded-full bg-muted p-4">
+        {isUpcoming ? (
+          <CalendarDays className="h-8 w-8 text-muted-foreground" />
         ) : (
-          <History className="w-8 h-8 text-muted-foreground" />
+          <History className="h-8 w-8 text-muted-foreground" />
         )}
       </div>
-      <h3 className="font-bold text-lg">
-        Empty {type === "upcoming" ? "Schedule" : "History"}
+      <h3 className="text-lg font-bold">
+        {isUpcoming ? "There is no exam right now" : "No history found"}
       </h3>
-      <p className="text-sm text-muted-foreground mt-2 max-w-xs leading-relaxed">
-        {type === "upcoming"
-          ? "You're all caught up! No upcoming exams found."
-          : "You haven't participated in any exams yet."}
+      <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
+        {isUpcoming
+          ? "Check back later for new schedules."
+          : "You haven't taken any exams yet."}
       </p>
     </div>
   );

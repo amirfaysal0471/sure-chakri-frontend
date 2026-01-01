@@ -48,6 +48,18 @@ export const API_ACCESS_RULES: RouteRule[] = [
     methods: ["GET"],
     roles: ["public"], // লগইন ছাড়াই এক্সেস পাবে
   },
+
+  {
+    path: "/api/leaderboard",
+    methods: ["GET"],
+    roles: ["public"],
+  },
+
+  {
+    path: "/api/payment-methods/public",
+    methods: ["GET"],
+    roles: ["public"],
+  },
 ];
 
 // 🔥 UI পেজের এক্সেস রুলস

@@ -32,7 +32,7 @@ import {
 // --- Navigation Config ---
 const NAV_LINKS = [
   { title: "Home", path: "/" },
-  { title: "Exams", path: "/exams" },
+  // { title: "Exams", path: "/exams" },
   { title: "Schedule", path: "/schedule" },
   { title: "Leaderboard", path: "/leaderboard" },
   { title: "Guide", path: "/docs" },

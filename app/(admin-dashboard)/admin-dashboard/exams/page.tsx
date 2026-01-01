@@ -1,13 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, Pencil, Trash2 } from "lucide-react";
+// 🔥 Import RefreshCcw Icon
+import { Plus, Search, Pencil, Trash2, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ExamStats } from "./_components/ExamStats";
 import { CreateExamModal } from "./_components/CreateExamModal";
 import { UpdateExamModal } from "./_components/UpdateExamModal";
 import { DeleteConfirmationModal } from "./_components/DeleteConfirmationModal";
+// 🔥 Import Republish Modal
+import { RepublishExamModal } from "./_components/RepublishExamModal";
+
 import { useData } from "@/app/hooks/use-data";
 import { useDelete } from "@/app/hooks/useDelete";
 import { toast } from "sonner";
@@ -28,13 +32,18 @@ export default function ExamsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  // 🔥 New Republish States
+  const [isRepublishModalOpen, setIsRepublishModalOpen] = useState(false);
+  const [republishExamData, setRepublishExamData] = useState<any>(null);
+
   const [examToEdit, setExamToEdit] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // Pagination & Search States
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
-  const itemsPerPage = 10; // প্রতি পেজে ১০টি ডাটা
+  const itemsPerPage = 10;
 
   // --- DATA FETCHING ---
   const { data: examsData, isLoading } = useData<any>(
@@ -44,13 +53,10 @@ export default function ExamsPage() {
   const exams = examsData?.data || [];
 
   // --- FILTER & PAGINATION LOGIC ---
-
-  // 1. Search Filter
   const filteredExams = exams.filter((exam: any) =>
     exam.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // 2. Pagination Calculations
   const totalItems = filteredExams.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -91,6 +97,12 @@ export default function ExamsPage() {
     setIsUpdateModalOpen(true);
   };
 
+  // 🔥 Republish Handler
+  const handleRepublishClick = (exam: any) => {
+    setRepublishExamData(exam);
+    setIsRepublishModalOpen(true);
+  };
+
   const handleCreate = () => {
     setExamToEdit(null);
     setIsCreateModalOpen(true);
@@ -103,7 +115,7 @@ export default function ExamsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Exam Management</h1>
           <p className="text-sm text-muted-foreground">
-            Create, manage and schedule exams.
+            Create, manage, and republish exams.
           </p>
         </div>
         <Button onClick={handleCreate} className="gap-2">
@@ -129,7 +141,7 @@ export default function ExamsPage() {
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setCurrentPage(1); // সার্চ করলে পেজ ১ এ রিসেট হবে
+              setCurrentPage(1);
             }}
           />
         </div>
@@ -140,8 +152,7 @@ export default function ExamsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[50px]">SL</TableHead>{" "}
-              {/* 🔥 Serial Column */}
+              <TableHead className="w-[50px]">SL</TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Date & Time</TableHead>
@@ -166,12 +177,19 @@ export default function ExamsPage() {
             ) : (
               currentData.map((exam: any, index: number) => (
                 <TableRow key={exam._id}>
-                  {/* 🔥 SL Logic: (Page-1)*Limit + Index + 1 */}
                   <TableCell className="font-medium text-muted-foreground">
                     {startIndex + index + 1}
                   </TableCell>
 
-                  <TableCell className="font-medium">{exam.title}</TableCell>
+                  <TableCell className="font-medium">
+                    {exam.title}
+                    {/* Optional: Show if republished */}
+                    {exam.title.includes("(Republished)") && (
+                      <Badge variant="outline" className="ml-2 text-[10px]">
+                        Copy
+                      </Badge>
+                    )}
+                  </TableCell>
 
                   <TableCell>
                     <Badge variant="secondary">
@@ -214,6 +232,17 @@ export default function ExamsPage() {
 
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
+                      {/* 🔥 REPUBLISH BUTTON */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Republish Exam"
+                        className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                        onClick={() => handleRepublishClick(exam)}
+                      >
+                        <RefreshCcw className="h-4 w-4" />
+                      </Button>
+
                       <Button
                         variant="ghost"
                         size="icon"
@@ -238,7 +267,6 @@ export default function ExamsPage() {
         </Table>
       </div>
 
-      {/* 🔥 PAGINATION CONTROLS */}
       {!isLoading && totalItems > 0 && (
         <div className="mt-4">
           <PaginationControls
@@ -264,6 +292,15 @@ export default function ExamsPage() {
           isOpen={isUpdateModalOpen}
           onClose={setIsUpdateModalOpen}
           examData={examToEdit}
+        />
+      )}
+
+      {/* 🔥 Render Republish Modal */}
+      {isRepublishModalOpen && republishExamData && (
+        <RepublishExamModal
+          isOpen={isRepublishModalOpen}
+          onClose={setIsRepublishModalOpen}
+          examData={republishExamData}
         />
       )}
 

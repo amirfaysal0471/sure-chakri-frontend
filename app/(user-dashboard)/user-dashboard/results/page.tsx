@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Trophy,
   Target,
@@ -8,11 +9,12 @@ import {
   CheckCircle2,
   XCircle,
   MinusCircle,
-  ChevronRight,
   CalendarDays,
   ArrowUpRight,
   Eye,
   Share2,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,53 +28,85 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useData } from "@/app/hooks/use-data"; // আপনার হুক
 
-// --- Mock Data (API ইন্টিগ্রেশনের সময় এটি রিপ্লেস করবেন) ---
-const MOCK_RESULTS = [
-  {
-    id: "1",
-    title: "BCS Preliminary Model Test 01",
-    examDate: "2025-12-28T10:00:00",
-    totalMarks: 100,
-    obtainedMarks: 75.5,
-    correct: 80,
-    wrong: 18,
-    skipped: 2,
-    negativeMarking: 0.25,
-    isPassed: true,
-    rank: 120,
-  },
-  {
-    id: "2",
-    title: "Primary Assistant Teacher Exam",
-    examDate: "2025-12-25T15:30:00",
-    totalMarks: 80,
-    obtainedMarks: 32,
-    correct: 40,
-    wrong: 32,
-    skipped: 8,
-    negativeMarking: 0.25,
-    isPassed: false,
-    rank: null,
-  },
-  {
-    id: "3",
-    title: "Bank Math Special Quiz",
-    examDate: "2025-12-20T09:00:00",
-    totalMarks: 50,
-    obtainedMarks: 48,
-    correct: 48,
-    wrong: 0,
-    skipped: 2,
-    negativeMarking: 0.5,
-    isPassed: true,
-    rank: 5,
-  },
-];
+// --- Types ---
+interface Result {
+  _id: string;
+  exam: {
+    title: string;
+    examDate: string;
+  };
+  totalMarks: number;
+  obtainedMarks: number;
+  correctCount: number;
+  wrongCount: number;
+  skippedCount: number;
+  isPassed: boolean;
+  createdAt: string;
+}
 
 export default function ResultsPage() {
+  const router = useRouter();
+
+  // 1. Data Fetching
+  const {
+    data: response,
+    isLoading,
+    error,
+  } = useData<{ data: Result[] }>(["user-results"], "/api/results");
+
+  const results = response?.data || [];
+
+  // 2. Calculate Stats Dynamically
+  const stats = useMemo(() => {
+    if (!results.length) return { total: 0, passed: 0, avgScore: 0 };
+
+    const total = results.length;
+    const passed = results.filter((r) => r.isPassed).length;
+
+    const totalPercentage = results.reduce((acc, curr) => {
+      const pct = (curr.obtainedMarks / curr.totalMarks) * 100;
+      return acc + pct;
+    }, 0);
+
+    const avgScore = Math.round(totalPercentage / total);
+
+    return { total, passed, avgScore };
+  }, [results]);
+
+  // 3. Loading State
+  if (isLoading) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center flex-col gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">
+          Loading your achievements...
+        </p>
+      </div>
+    );
+  }
+
+  // 4. Empty State
+  if (!isLoading && results.length === 0) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center flex-col gap-4 text-center px-4">
+        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+          <Target className="w-8 h-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-bold">No Exams Taken Yet</h2>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          Participate in model tests to track your progress here.
+        </p>
+        <Button onClick={() => router.push("/user-dashboard/exams")}>
+          Browse Exams
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6 pb-24 max-w-3xl mx-auto">
+    <div className="space-y-6 pb-24 max-w-3xl mx-auto animate-in fade-in duration-500">
       {/* --- Page Header --- */}
       <div className="flex flex-col gap-1 px-1">
         <h1 className="text-2xl font-bold tracking-tight">Results & Stats</h1>
@@ -81,25 +115,25 @@ export default function ResultsPage() {
         </p>
       </div>
 
-      {/* --- Top Stats Overview (Horizontal Scroll on Mobile) --- */}
+      {/* --- Top Stats Overview --- */}
       <div className="grid grid-cols-3 gap-3">
         <StatCard
           label="Exams"
-          value={MOCK_RESULTS.length}
+          value={stats.total}
           icon={Target}
           color="text-blue-600"
           bg="bg-blue-50"
         />
         <StatCard
           label="Passed"
-          value={MOCK_RESULTS.filter((r) => r.isPassed).length}
+          value={stats.passed}
           icon={CheckCircle2}
           color="text-green-600"
           bg="bg-green-50"
         />
         <StatCard
           label="Avg. Score"
-          value="68%"
+          value={`${stats.avgScore}%`}
           icon={TrendingUp}
           color="text-amber-600"
           bg="bg-amber-50"
@@ -112,8 +146,8 @@ export default function ResultsPage() {
           Recent History
         </h3>
 
-        {MOCK_RESULTS.map((result) => (
-          <ResultCard key={result.id} result={result} />
+        {results.map((result) => (
+          <ResultCard key={result._id} result={result} />
         ))}
       </div>
     </div>
@@ -140,12 +174,16 @@ function StatCard({ label, value, icon: Icon, color, bg }: any) {
 }
 
 // --- Component: Main Result Card ---
-function ResultCard({ result }: { result: any }) {
+function ResultCard({ result }: { result: Result }) {
+  const router = useRouter();
+
   // Percentage Calculation
   const percentage = Math.round(
     (result.obtainedMarks / result.totalMarks) * 100
   );
-  const formattedDate = new Date(result.examDate).toLocaleDateString("en-US", {
+
+  // Date Formatting (Using createdAt or examDate if available in DB)
+  const formattedDate = new Date(result.createdAt).toLocaleDateString("en-US", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -158,7 +196,7 @@ function ResultCard({ result }: { result: any }) {
         <div className="flex justify-between items-start gap-2">
           <div>
             <h3 className="font-bold text-base leading-snug line-clamp-1">
-              {result.title}
+              {result.exam?.title || "Unknown Exam"}
             </h3>
             <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
               <CalendarDays className="w-3.5 h-3.5" />
@@ -166,16 +204,15 @@ function ResultCard({ result }: { result: any }) {
             </div>
           </div>
 
-          {/* Rank Badge (If available) */}
-          {result.rank && (
-            <Badge
-              variant="secondary"
-              className="bg-background shadow-sm text-[10px] h-6 px-2 gap-1 border"
-            >
-              <Trophy className="w-3 h-3 text-amber-500" />
-              Rank: {result.rank}
-            </Badge>
-          )}
+          {/* Rank Badge (Optional: If backend provides rank) */}
+          {/* <Badge
+            variant="secondary"
+            className="bg-background shadow-sm text-[10px] h-6 px-2 gap-1 border"
+          >
+            <Trophy className="w-3 h-3 text-amber-500" />
+            Rank: 12
+          </Badge> 
+          */}
         </div>
       </CardHeader>
 
@@ -225,19 +262,19 @@ function ResultCard({ result }: { result: any }) {
             <StatItem
               icon={CheckCircle2}
               label="Correct"
-              value={result.correct}
+              value={result.correctCount}
               color="text-green-600"
             />
             <StatItem
               icon={XCircle}
               label="Wrong"
-              value={result.wrong}
+              value={result.wrongCount}
               color="text-red-600"
             />
             <StatItem
               icon={MinusCircle}
               label="Skipped"
-              value={result.skipped}
+              value={result.skippedCount}
               color="text-gray-500"
             />
             <StatItem
@@ -280,14 +317,16 @@ function ResultCard({ result }: { result: any }) {
           variant="outline"
           size="sm"
           className="flex-1 h-9 text-xs font-semibold"
+          // Share functionality can be added here
         >
           <Share2 className="w-3.5 h-3.5 mr-2" /> Share
         </Button>
         <Button
           size="sm"
           className="flex-1 h-9 text-xs font-bold bg-primary hover:bg-primary/90"
+          onClick={() => router.push(`/user-dashboard/results/${result._id}`)}
         >
-          <Eye className="w-3.5 h-3.5 mr-2" /> View Solution
+          <Eye className="w-3.5 h-3.5 mr-2" /> View Details
         </Button>
       </CardFooter>
     </Card>

@@ -6,65 +6,70 @@ export async function GET(req: Request) {
   try {
     await connectDB();
 
-    // 1. URL থেকে প্যারামিটার নেওয়া
     const { searchParams } = new URL(req.url);
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "10");
-    const type = searchParams.get("type") || "upcoming"; // 'upcoming' or 'archive'
+    const type = searchParams.get("type") || "upcoming";
 
-    // 2. Skip ক্যালকুলেশন (Pagination এর জন্য)
-    const skip = (page - 1) * limit;
-    const now = new Date();
+    // MongoDB Aggregation Pipeline
+    const exams = await Exam.aggregate([
+      { $match: {} }, // প্রয়োজনে এখানে ফিল্টার যুক্ত করতে পারেন
 
-    // 3. কুয়েরি এবং সর্টিং লজিক
-    let query: any = {
-      // শুধুমাত্র পাবলিক বা অ্যাক্টিভ এক্সাম দেখানোর জন্য ফিল্টার (যদি থাকে)
-      // isActive: true,
-    };
-
-    // যদি চান ব্যাকএন্ড থেকেই Upcoming/Archive আলাদা করতে, তাহলে নিচের লজিক আনকমেন্ট করতে পারেন।
-    // তবে ফ্রন্টএন্ডে যেহেতু আমরা রিয়েল-টাইম চেক করছি, তাই এখানে সব ডেটা পাঠানোই নিরাপদ।
-    /*
-    if (type === "upcoming") {
-      query.examDate = { $gte: now }; // আজকের পরের গুলো
-    } else if (type === "archive") {
-      query.examDate = { $lt: now };  // আগের গুলো
-    }
-    */
-
-    // 4. ডেটাবেস থেকে ডেটা আনা
-    const exams = await Exam.find(query)
-      // প্রশ্ন বা উত্তর সাধারণ ইউজারদের পাঠানো যাবে না, তাই বাদ দেওয়া হলো
-      .select("-questions -answers")
-      // Archive হলে নতুন গুলো আগে, Upcoming হলে পুরান গুলো আগে (Date Sorting)
-      .sort({ examDate: type === "archive" ? -1 : 1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
-
-    // 5. আরও ডেটা আছে কিনা চেক করা (Infinite Scroll এর জন্য জরুরি)
-    const totalExams = await Exam.countDocuments(query);
-    const hasMore = skip + exams.length < totalExams;
-
-    return NextResponse.json(
+      // ১. রেজাল্ট এবং ইউজার ইনফো একসাথে আনা (শুধুমাত্র লেটেস্ট ৩টি)
       {
-        success: true,
-        data: exams,
-        hasMore, // ফ্রন্টএন্ডকে জানাবে আরও ডেটা লোড করতে হবে কিনা
-        page,
-      },
-      {
-        status: 200,
-        headers: {
-          "Cache-Control": "no-store, max-age=0",
+        $lookup: {
+          from: "results",
+          let: { examId: "$_id" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$exam", "$$examId"] } } }, // এই এক্সামের রেজাল্ট
+            { $sort: { createdAt: -1 } }, // সবার শেষে যারা দিয়েছে
+            { $limit: 3 }, // মাত্র ৩ জন
+            {
+              $lookup: {
+                // ইউজার ডিটেইলস আনা
+                from: "users",
+                localField: "user",
+                foreignField: "_id",
+                as: "userInfo",
+              },
+            },
+            { $unwind: "$userInfo" }, // অ্যারে থেকে অবজেক্ট করা
+            { $project: { "userInfo.image": 1, "userInfo.name": 1 } }, // শুধু ছবি আর নাম নেওয়া
+          ],
+          as: "recentParticipants",
         },
-      }
-    );
+      },
+
+      // ২. মোট কতজন দিয়েছে সেটা আলাদাভাবে গোনা
+      {
+        $lookup: {
+          from: "results",
+          localField: "_id",
+          foreignField: "exam",
+          as: "allResults", // শুধু কাউন্টের জন্য
+        },
+      },
+
+      {
+        $addFields: {
+          usersJoined: { $size: "$allResults" }, // মোট সংখ্যা
+          recentUsers: "$recentParticipants.userInfo", // ৩ জনের ছবির লিস্ট
+        },
+      },
+
+      {
+        $project: {
+          allResults: 0,
+          recentParticipants: 0,
+          questions: 0,
+          answers: 0,
+          __v: 0,
+        },
+      },
+
+      { $sort: { examDate: type === "archive" ? -1 : 1 } },
+    ]);
+
+    return NextResponse.json({ success: true, data: exams });
   } catch (error: any) {
-    console.error("Public Exams Error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to load exam schedule" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

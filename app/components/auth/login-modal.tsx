@@ -43,14 +43,33 @@ interface LoginModalProps {
   children?: React.ReactNode;
   preventRedirect?: boolean;
   onLoginSuccess?: () => void;
+  // 🔥 New Props for Controlled State
+  isOpen?: boolean;
+  onClose?: (open: boolean) => void;
 }
 
 export function LoginModal({
   children,
   preventRedirect = false,
   onLoginSuccess,
+  isOpen, // Optional controlled state
+  onClose, // Optional close handler
 }: LoginModalProps) {
-  const [open, setOpen] = useState(false);
+  // Internal state for uncontrolled usage (if needed somewhere else)
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  // 🔥 Use controlled state if provided, otherwise internal state
+  const isModalOpen = isOpen !== undefined ? isOpen : internalOpen;
+
+  // 🔥 Handle Open/Close logic
+  const handleOpenChange = (open: boolean) => {
+    if (onClose) {
+      onClose(open);
+    } else {
+      setInternalOpen(open);
+    }
+  };
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isLoginView, setIsLoginView] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,21 +83,19 @@ export function LoginModal({
   const router = useRouter();
 
   useEffect(() => {
-    if (open) {
+    if (isModalOpen) {
       setError(null);
       setSuccess(null);
       setEmail("");
       setPassword("");
       setName("");
     }
-  }, [open, isLoginView]);
+  }, [isModalOpen, isLoginView]);
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // 🔥 FIX 1: Google লগইনের পর '/dashboard' এ পাঠাবে
-      // সেখানে আমরা রোল চেক করে রিডাইরেক্ট করব
       await signIn("google", {
         callbackUrl: preventRedirect ? window.location.href : "/dashboard",
       });
@@ -117,9 +134,8 @@ export function LoginModal({
         setIsLoading(false);
       } else {
         const session = await getSession();
-        setOpen(false);
+        handleOpenChange(false); // Close Modal
 
-        // 🔥 FIX 2: Credentials লগইনের পর ম্যানুয়ালি রোল চেক করে রিডাইরেক্ট
         if (!preventRedirect) {
           if ((session?.user as any)?.role === "admin") {
             router.push("/admin-dashboard");
@@ -127,7 +143,6 @@ export function LoginModal({
             router.push("/user-dashboard");
           }
         } else {
-          // Exam Page এ থাকলে রিফ্রেশ করবে শুধু
           router.refresh();
         }
 
@@ -153,7 +168,6 @@ export function LoginModal({
         } else {
           setSuccess("Account created! Logging you in...");
 
-          // Auto Login
           const loginRes = await signIn("credentials", {
             email: cleanEmail,
             password: cleanPassword,
@@ -161,9 +175,8 @@ export function LoginModal({
           });
 
           if (!loginRes?.error) {
-            setOpen(false);
+            handleOpenChange(false); // Close Modal
 
-            // Register এর পর সরাসরি ইউজার ড্যাশবোর্ডে
             if (!preventRedirect) {
               router.push("/user-dashboard");
             } else {
@@ -184,10 +197,9 @@ export function LoginModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children ? children : <Button>Login</Button>}
-      </DialogTrigger>
+    <Dialog open={isModalOpen} onOpenChange={handleOpenChange}>
+      {/* 🔥 FIX: Only render Trigger if children exist */}
+      {children && <DialogTrigger asChild>{children}</DialogTrigger>}
 
       <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl">
         <div className="bg-slate-50 dark:bg-slate-900 p-8 pb-6 border-b">

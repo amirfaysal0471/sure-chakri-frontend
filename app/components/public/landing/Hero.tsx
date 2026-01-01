@@ -1,16 +1,46 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Trophy, Star } from "lucide-react";
+import { ArrowRight, Trophy, Star, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
+// টাইপ ডিফাইন করা
+interface Champion {
+  name: string;
+  image?: string;
+  totalPoints: number;
+}
+
 export default function HeroSection() {
+  const [champion, setChampion] = useState<Champion | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // 🔥 API থেকে র‍্যাংক ১ এর ডাটা আনা
+  useEffect(() => {
+    const fetchChampion = async () => {
+      try {
+        const res = await fetch("/api/leaderboard/top");
+        const data = await res.json();
+        if (data.success) {
+          setChampion(data.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch champion", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChampion();
+  }, []);
+
   return (
     <section className="relative pt-28 pb-20 lg:pt-36 lg:pb-32 overflow-hidden bg-background">
-      {/* --- 1. Background Ambience --- */}
+      {/* ... Background Effects (Same as before) ... */}
       <div className="absolute top-0 right-0 -z-10 translate-x-1/2 -translate-y-1/2">
         <div className="h-[600px] w-[600px] rounded-full bg-primary/10 blur-[100px]" />
       </div>
@@ -21,15 +51,13 @@ export default function HeroSection() {
 
       <div className="container mx-auto px-4 relative z-10">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
-          {/* --- LEFT SIDE: Content --- */}
+          {/* --- LEFT SIDE (Same as before) --- */}
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-            {/* Trust Badge */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-muted/50 backdrop-blur-sm text-sm font-medium text-muted-foreground">
               <span className="flex h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
               Live: 50th BCS Model Test Ongoing
             </div>
 
-            {/* Headline */}
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.15]">
               Exam Hall-এর ভয়, <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-blue-600 to-indigo-600">
@@ -37,13 +65,11 @@ export default function HeroSection() {
               </span>
             </h1>
 
-            {/* Subtext */}
             <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
               স্মার্ট এক্সাম সিস্টেমের মাধ্যমে নিজের ভুলগুলো শুধরে নিন এবং
-              সাফল্যের পথে এক ধাপ এগিয়ে থাকুন।
+              সাফল্যের পথে এক ধাপ এগিয়ে থাকুন।
             </p>
 
-            {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
               <Button
                 size="lg"
@@ -67,7 +93,7 @@ export default function HeroSection() {
               </Button>
             </div>
 
-            {/* Social Proof Avatar Group */}
+            {/* Social Proof (Static for now) */}
             <div className="flex items-center gap-4 pt-4">
               <div className="flex -space-x-3">
                 {[1, 2, 3, 4].map((i) => (
@@ -100,13 +126,10 @@ export default function HeroSection() {
             </div>
           </div>
 
-          {/* --- RIGHT SIDE: Hero Image --- */}
+          {/* --- RIGHT SIDE: Hero Image with Dynamic Card --- */}
           <div className="relative mx-auto lg:ml-auto w-full max-w-[500px] lg:max-w-[600px] perspective-1000 animate-in fade-in zoom-in duration-1000 delay-200">
-            {/* Background Blob */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[110%] h-[110%] bg-gradient-to-br from-primary/20 to-blue-500/20 rounded-full blur-3xl -z-10 opacity-60" />
 
-            {/* THE IMAGE COMPONENT */}
-            {/* Make sure you have 'hero.png' inside your 'public' folder */}
             <Image
               src="/hero.png"
               alt="Students taking exam illustration"
@@ -116,17 +139,57 @@ export default function HeroSection() {
               priority
             />
 
-            {/* Floating Decoration Card */}
-            <div className="absolute -right-6 top-20 p-4 bg-background/90 backdrop-blur-xl shadow-xl border rounded-2xl animate-bounce duration-[3000ms] hidden md:flex items-center gap-3">
-              <div className="bg-green-100 p-2 rounded-full text-green-600">
-                <Trophy size={20} />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-bold uppercase">
-                  Rank #1
-                </p>
-                <p className="font-bold text-sm">Sakib Al Hasan</p>
-              </div>
+            {/* 🔥 DYNAMIC FLOATING CARD FOR RANK 1 🔥 */}
+            <div className="absolute -right-6 top-20 p-3 pr-5 bg-background/95 backdrop-blur-xl shadow-2xl border rounded-full animate-bounce duration-[3000ms] hidden md:flex items-center gap-3 min-w-[180px]">
+              {/* ১. লোডিং অবস্থা */}
+              {loading ? (
+                <div className="flex items-center gap-3 w-full">
+                  <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
+                  <div className="space-y-1">
+                    <div className="h-3 w-16 bg-muted rounded animate-pulse" />
+                    <div className="h-3 w-24 bg-muted rounded animate-pulse" />
+                  </div>
+                </div>
+              ) : champion ? (
+                /* ২. ডাটা পেলে যা দেখাবে */
+                <>
+                  <div className="relative">
+                    <Avatar className="h-12 w-12 border-2 border-yellow-500">
+                      <AvatarImage src={champion.image} alt={champion.name} />
+                      <AvatarFallback className="font-bold text-primary">
+                        {champion.name?.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="absolute -top-1 -right-1 bg-yellow-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-background">
+                      #1
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+                      Current Champion
+                    </p>
+                    <p className="font-bold text-sm text-foreground truncate max-w-[120px]">
+                      {champion.name}
+                    </p>
+                    <p className="text-[10px] font-medium text-primary">
+                      {champion.totalPoints} Points
+                    </p>
+                  </div>
+                </>
+              ) : (
+                /* ৩. ডাটা না থাকলে ডিফল্ট */
+                <>
+                  <div className="bg-green-100 p-2 rounded-full text-green-600">
+                    <Trophy size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground font-bold uppercase">
+                      Rank #1
+                    </p>
+                    <p className="font-bold text-sm">Be the First!</p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

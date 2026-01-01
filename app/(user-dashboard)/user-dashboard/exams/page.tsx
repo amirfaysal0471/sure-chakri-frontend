@@ -1,20 +1,20 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Clock,
   PlayCircle,
-  Timer,
   Loader2,
   BookOpen,
   CheckCircle2,
   Calendar,
   AlertTriangle,
   Trophy,
-  ShieldCheck,
   Crown,
+  Eye,
+  Lock,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useData } from "@/app/hooks/use-data";
 import { cn } from "@/lib/utils";
+import { useSession } from "next-auth/react";
 
 // --- Types ---
+
+type ExamStatus = "LIVE" | "UPCOMING" | "ENDED";
+
 interface ExamSettings {
   passMarks?: number;
   negativeMarking?: boolean;
@@ -43,71 +47,109 @@ interface Exam {
   settings?: ExamSettings;
 }
 
+interface UserResult {
+  exam: string | { _id: string };
+  _id: string;
+}
+
+interface ExamApiResponse {
+  data: Exam[];
+}
+
+interface ResultsApiResponse {
+  data: UserResult[];
+}
+
+// =========================================================
+// MAIN PAGE COMPONENT
+// =========================================================
+
 export default function LiveExamsPage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [now, setNow] = useState<Date>(new Date());
 
+  // Get User Plan (Default to 'free')
+  const userPlan = session?.user?.plan || "free";
+
   // --- Data Fetching ---
-  const { data: responseData, isLoading } = useData<any>(
-    ["live-exams-list"],
-    "/api/exams/public"
-  );
+  const { data: examsResponse, isLoading: isLoadingExams } =
+    useData<ExamApiResponse>(["live-exams-list"], "/api/exams/public");
 
-  const allExams: Exam[] = responseData?.data || [];
+  const allExams: Exam[] = examsResponse?.data || [];
 
-  // --- Real-time Clock ---
+  // 🔥 FIX: Cast null as any to bypass TypeScript error on conditional fetching
+  const { data: resultsResponse, isLoading: isLoadingResults } =
+    useData<ResultsApiResponse>(
+      ["user-results-check", session?.user?.id],
+      session?.user?.id ? `/api/results` : (null as any)
+    );
+
+  const userResults: UserResult[] = resultsResponse?.data || [];
+
+  // Map Results
+  const examParticipationMap = useMemo(() => {
+    const map = new Map<string, string>();
+    userResults.forEach((result) => {
+      const examId =
+        typeof result.exam === "string" ? result.exam : result.exam._id;
+      map.set(examId, result._id);
+    });
+    return map;
+  }, [userResults]);
+
+  // Clock
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 10000);
+    const timer = setInterval(() => setNow(new Date()), 10_000);
     return () => clearInterval(timer);
   }, []);
 
-  // --- Filter Logic (Strictly Today) ---
-  const todaysExams = useMemo(() => {
-    return allExams.filter((exam) => {
+  // Status Helper
+  const getExamStatus = useCallback(
+    (exam: Exam): ExamStatus => {
+      try {
+        const examDate = new Date(exam.examDate);
+        const [startH, startM] = exam.startTime.split(":");
+        const startDateTime = new Date(examDate);
+        startDateTime.setHours(Number(startH), Number(startM), 0);
+
+        const [endH, endM] = exam.endTime.split(":");
+        const endDateTime = new Date(examDate);
+        endDateTime.setHours(Number(endH), Number(endM), 0);
+
+        if (now > endDateTime) return "ENDED";
+        if (now >= startDateTime && now <= endDateTime) return "LIVE";
+        return "UPCOMING";
+      } catch {
+        return "UPCOMING";
+      }
+    },
+    [now]
+  );
+
+  // Filter & Sort
+  const sortedExams = useMemo(() => {
+    const todaysExams = allExams.filter((exam) => {
       const examDate = new Date(exam.examDate);
-      return (
-        examDate.getDate() === now.getDate() &&
-        examDate.getMonth() === now.getMonth() &&
-        examDate.getFullYear() === now.getFullYear()
-      );
+      return examDate.toDateString() === now.toDateString();
     });
-  }, [allExams, now]);
 
-  // --- Dynamic Status Helper ---
-  const getExamStatus = (exam: Exam) => {
-    try {
-      const examDate = new Date(exam.examDate);
-      const [startH, startM] = exam.startTime.split(":");
-      const startDateTime = new Date(examDate);
-      startDateTime.setHours(Number(startH), Number(startM), 0);
+    return todaysExams.sort((a, b) => {
+      const statusA = getExamStatus(a);
+      const statusB = getExamStatus(b);
+      if (statusA === "LIVE" && statusB !== "LIVE") return -1;
+      if (statusB === "LIVE" && statusA !== "LIVE") return 1;
+      if (statusA === "UPCOMING" && statusB === "ENDED") return -1;
+      if (statusA === "ENDED" && statusB === "UPCOMING") return 1;
+      return 0;
+    });
+  }, [allExams, now, getExamStatus]);
 
-      const [endH, endM] = exam.endTime.split(":");
-      const endDateTime = new Date(examDate);
-      endDateTime.setHours(Number(endH), Number(endM), 0);
-
-      if (now > endDateTime) return "ENDED";
-      if (now >= startDateTime && now <= endDateTime) return "LIVE";
-      return "UPCOMING";
-    } catch (error) {
-      return "UPCOMING";
-    }
-  };
-
-  // Sort: LIVE -> UPCOMING -> ENDED
-  const sortedExams = [...todaysExams].sort((a, b) => {
-    const statusA = getExamStatus(a);
-    const statusB = getExamStatus(b);
-    if (statusA === "LIVE") return -1;
-    if (statusB === "LIVE") return 1;
-    if (statusA === "UPCOMING" && statusB === "ENDED") return -1;
-    return 0;
-  });
-
-  if (isLoading) {
+  if (isLoadingExams || (session?.user?.id && isLoadingResults)) {
     return (
       <div className="flex h-[70vh] flex-col items-center justify-center gap-3">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="text-sm font-medium text-muted-foreground animate-pulse">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="animate-pulse text-sm font-medium text-muted-foreground">
           Checking Schedule...
         </p>
       </div>
@@ -115,25 +157,23 @@ export default function LiveExamsPage() {
   }
 
   return (
-    <div className="space-y-5 pb-24 max-w-3xl mx-auto">
-      {/* --- App Header (Sticky) --- */}
-      <div className="sticky top-16 md:top-0 z-30 bg-background/95 backdrop-blur py-3 border-b md:border-none">
-        <div className="flex justify-between items-center">
+    <div className="mx-auto max-w-3xl space-y-5 pb-24">
+      {/* Header */}
+      <div className="sticky top-16 z-30 border-b bg-background/95 py-3 backdrop-blur md:top-0 md:border-none">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight">
               <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
               </span>
               Exam Center
             </h1>
-            <p className="text-xs text-muted-foreground font-medium">
-              Today's Schedule
+            <p className="text-xs font-medium text-muted-foreground">
+              Today&apos;s Schedule
             </p>
           </div>
-
-          {/* Date Widget */}
-          <div className="bg-muted/50 px-3 py-1.5 rounded-lg border text-right">
+          <div className="rounded-lg border bg-muted/50 px-3 py-1.5 text-right">
             <div className="text-xs font-bold text-foreground">
               {now.toLocaleDateString("en-US", {
                 weekday: "short",
@@ -141,8 +181,8 @@ export default function LiveExamsPage() {
                 month: "short",
               })}
             </div>
-            <div className="text-[10px] text-muted-foreground flex items-center justify-end gap-1">
-              <Clock className="w-2.5 h-2.5" />
+            <div className="flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+              <Clock className="h-2.5 w-2.5" />
               {now.toLocaleTimeString("en-US", {
                 hour: "numeric",
                 minute: "2-digit",
@@ -152,41 +192,71 @@ export default function LiveExamsPage() {
         </div>
       </div>
 
-      {/* --- Exam List --- */}
+      {/* List */}
       <div className="grid gap-4">
         {sortedExams.length > 0 ? (
-          sortedExams.map((exam) => (
-            <MobileExamCard
-              key={exam._id}
-              exam={exam}
-              status={getExamStatus(exam)}
-              onStart={() => router.push(`/user-dashboard/exams/${exam._id}`)}
-            />
-          ))
+          sortedExams.map((exam) => {
+            const resultId = examParticipationMap.get(exam._id);
+            return (
+              <MobileExamCard
+                key={exam._id}
+                exam={exam}
+                status={getExamStatus(exam)}
+                hasParticipated={!!resultId}
+                resultId={resultId}
+                userPlan={userPlan}
+                onStart={() => router.push(`/user-dashboard/exams/${exam._id}`)}
+                onViewResult={() =>
+                  router.push(`/user-dashboard/results/${resultId}`)
+                }
+                onUpgrade={() => router.push(`/pricing`)}
+              />
+            );
+          })
         ) : (
-          <EmptyState router={router} />
+          <EmptyState />
         )}
       </div>
     </div>
   );
 }
 
-// --- Component: Mobile App Style Card ---
+// =========================================================
+// MOBILE EXAM CARD (With Premium Logic)
+// =========================================================
+
+interface MobileExamCardProps {
+  exam: Exam;
+  status: ExamStatus;
+  hasParticipated: boolean;
+  resultId?: string;
+  userPlan: string;
+  onStart: () => void;
+  onViewResult: () => void;
+  onUpgrade: () => void;
+}
+
 function MobileExamCard({
   exam,
   status,
+  hasParticipated,
+  resultId,
+  userPlan,
   onStart,
-}: {
-  exam: Exam;
-  status: string;
-  onStart: () => void;
-}) {
-  // Format Time: 1.00 PM
+  onViewResult,
+  onUpgrade,
+}: MobileExamCardProps) {
+  const isLive = status === "LIVE";
+  const isEnded = status === "ENDED";
+
+  // PREMIUM LOGIC
+  const hasValidPlan = ["pro", "premium"].includes(userPlan);
+  const isLocked = exam.isPremium && !hasValidPlan;
+
   const formatTime = (time: string) => {
     const [h, m] = time.split(":");
     const d = new Date();
-    d.setHours(Number(h));
-    d.setMinutes(Number(m));
+    d.setHours(Number(h), Number(m));
     return d
       .toLocaleTimeString("en-US", {
         hour: "numeric",
@@ -196,43 +266,50 @@ function MobileExamCard({
       .replace(":", ".");
   };
 
-  const isLive = status === "LIVE";
-  const isEnded = status === "ENDED";
+  const handleWait = () => {
+    toast.info(`Wait! Exam starts at ${formatTime(exam.startTime)}`);
+  };
 
   return (
     <Card
       className={cn(
-        "border-none shadow-sm relative overflow-hidden transition-all active:scale-[0.99]",
-        isLive
-          ? "bg-red-50/50 dark:bg-red-900/10 ring-2 ring-red-500"
+        "relative overflow-hidden border-none shadow-sm transition-all active:scale-[0.99]",
+        isLive && !hasParticipated && !isLocked
+          ? "bg-red-50/50 ring-2 ring-red-500 dark:bg-red-900/10"
+          : hasParticipated
+          ? "bg-green-50/30 ring-1 ring-green-200"
+          : isLocked
+          ? "bg-gray-50 ring-1 ring-gray-200 opacity-90"
           : "bg-card ring-1 ring-border/50"
       )}
     >
-      {/* Live Indicator Strip */}
-      {isLive && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-red-500 animate-pulse z-10" />
+      {/* Indicators */}
+      {isLive && !hasParticipated && !isLocked && (
+        <div className="absolute left-0 right-0 top-0 z-10 h-1 animate-pulse bg-red-500" />
+      )}
+      {hasParticipated && (
+        <div className="absolute left-0 right-0 top-0 z-10 h-1 bg-green-500" />
       )}
 
-      <CardContent className="p-4 flex flex-col gap-3">
-        {/* Top Row: Tags & Premium Status */}
+      <CardContent className="flex flex-col gap-3 p-4">
+        {/* Top Row */}
         <div className="flex justify-between items-start">
           <div className="flex gap-2">
             <Badge
               variant="outline"
-              className="bg-background/50 text-[10px] h-5 px-2 font-normal text-muted-foreground border-border truncate max-w-[150px]"
+              className="h-5 max-w-[150px] truncate border-border bg-background/50 px-2 text-[10px] font-normal text-muted-foreground"
             >
               {exam.topic}
             </Badge>
 
-            {/* Premium / Free Badge */}
             {exam.isPremium ? (
-              <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 text-[10px] h-5 px-2 gap-1">
-                <Crown className="w-3 h-3 fill-amber-700" /> Premium
+              <Badge className="h-5 gap-1 border-amber-200 bg-amber-100 px-2 text-[10px] text-amber-700 hover:bg-amber-100">
+                <Crown className="h-3 w-3 fill-amber-700" /> Premium
               </Badge>
             ) : (
               <Badge
                 variant="secondary"
-                className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 text-[10px] h-5 px-2"
+                className="h-5 border-green-200 bg-green-100 px-2 text-[10px] text-green-700 hover:bg-green-100"
               >
                 Free
               </Badge>
@@ -240,65 +317,67 @@ function MobileExamCard({
           </div>
 
           {/* Status Badge */}
-          {isLive ? (
-            <Badge className="bg-red-600 hover:bg-red-700 animate-pulse text-[10px] px-2 h-5">
+          {hasParticipated ? (
+            <Badge className="h-5 bg-green-600 px-2 text-[10px] hover:bg-green-700">
+              Done
+            </Badge>
+          ) : isLive ? (
+            <Badge className="h-5 animate-pulse bg-red-600 px-2 text-[10px] hover:bg-red-700">
               LIVE
             </Badge>
           ) : isEnded ? (
-            <Badge variant="secondary" className="text-[10px] h-5">
+            <Badge variant="secondary" className="h-5 text-[10px]">
               Ended
             </Badge>
           ) : (
-            <Badge className="bg-blue-600 hover:bg-blue-700 text-[10px] px-2 h-5">
+            <Badge className="h-5 bg-blue-600 px-2 text-[10px] hover:bg-blue-700">
               Upcoming
             </Badge>
           )}
         </div>
 
-        {/* Title & Time */}
-        <div className="flex flex-col gap-1 mt-1">
-          <h3 className="font-bold text-lg leading-snug line-clamp-2">
-            {exam.title}
-          </h3>
+        {/* Title */}
+        <div className="mt-1 flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            {isLocked && <Lock className="w-4 h-4 text-gray-400" />}{" "}
+            <h3 className="line-clamp-2 text-lg font-bold leading-snug">
+              {exam.title}
+            </h3>
+          </div>
           <div
             className={cn(
-              "text-sm font-bold flex items-center gap-1.5",
-              isLive ? "text-red-600" : "text-foreground"
+              "flex items-center gap-1.5 text-sm font-bold",
+              isLive && !hasParticipated && !isLocked
+                ? "text-red-600"
+                : "text-foreground"
             )}
           >
-            <Clock className="w-3.5 h-3.5" />
+            <Clock className="h-3.5 w-3.5" />
             {formatTime(exam.startTime)} - {formatTime(exam.endTime)}
           </div>
         </div>
 
-        {/* --- Exam Details Grid (Mobile Friendly) --- */}
-        <div className="grid grid-cols-2 gap-2 mt-2">
-          {/* Duration */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/30 p-1.5 rounded border border-dashed">
-            <Clock className="w-3.5 h-3.5 text-blue-500" />
+        {/* Details Grid */}
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="flex items-center gap-1.5 rounded border border-dashed bg-muted/30 p-1.5 text-xs text-muted-foreground">
+            <Clock className="h-3.5 w-3.5 text-blue-500" />{" "}
             <span className="font-medium">{exam.duration}m Duration</span>
           </div>
-
-          {/* Total Marks */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/30 p-1.5 rounded border border-dashed">
-            <BookOpen className="w-3.5 h-3.5 text-purple-500" />
+          <div className="flex items-center gap-1.5 rounded border border-dashed bg-muted/30 p-1.5 text-xs text-muted-foreground">
+            <BookOpen className="h-3.5 w-3.5 text-purple-500" />{" "}
             <span className="font-medium">{exam.totalMarks} Marks</span>
           </div>
-
-          {/* Pass Marks */}
           {exam.settings?.passMarks && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/30 p-1.5 rounded border border-dashed">
-              <Trophy className="w-3.5 h-3.5 text-amber-500" />
+            <div className="flex items-center gap-1.5 rounded border border-dashed bg-muted/30 p-1.5 text-xs text-muted-foreground">
+              <Trophy className="h-3.5 w-3.5 text-amber-500" />{" "}
               <span className="font-medium">
                 Pass: {exam.settings.passMarks}%
               </span>
             </div>
           )}
-
-          {/* Negative Marking */}
           {exam.settings?.negativeMarking && (
-            <div className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 p-1.5 rounded border border-red-100">
-              <AlertTriangle className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-1.5 rounded border border-red-100 bg-red-50 p-1.5 text-xs text-red-600">
+              <AlertTriangle className="h-3.5 w-3.5" />{" "}
               <span className="font-bold">
                 -{exam.settings.negativeMarkValue} Negative
               </span>
@@ -306,53 +385,79 @@ function MobileExamCard({
           )}
         </div>
 
-        {/* Action Button */}
-        <div className="mt-2 pt-3 border-t border-dashed">
-          {isLive ? (
-            <Button
-              size="sm"
-              className="w-full h-10 bg-red-600 hover:bg-red-700 font-bold px-5 text-sm rounded-lg shadow-md shadow-red-200 dark:shadow-none animate-in fade-in zoom-in"
-              onClick={onStart}
-            >
-              Start Exam{" "}
-              <PlayCircle className="w-4 h-4 ml-2 fill-white text-red-600" />
-            </Button>
-          ) : isEnded ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="w-full h-9 text-xs text-muted-foreground"
-              disabled
-            >
-              Exam Time Over
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="w-full h-9 px-4 text-xs rounded-lg font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100"
-              onClick={() =>
-                toast.info(`Wait! Exam starts at ${formatTime(exam.startTime)}`)
-              }
-            >
-              Wait for Start
-            </Button>
-          )}
+        {/* Action Buttons Logic */}
+        <div className="mt-2 border-t border-dashed pt-3">
+          {
+            // Case 1: Exam is Locked (Premium & User is Free)
+            isLocked ? (
+              <Button
+                size="sm"
+                className="h-10 w-full rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-sm"
+                onClick={onUpgrade}
+              >
+                <Lock className="mr-2 h-4 w-4" /> Upgrade to Unlock
+              </Button>
+            ) : // Case 2: Already Participated
+            hasParticipated ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-10 w-full rounded-lg border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800"
+                onClick={onViewResult}
+              >
+                <Eye className="mr-2 h-4 w-4" /> View Result
+              </Button>
+            ) : // Case 3: Live Exam (Accessible)
+            isLive ? (
+              <Button
+                size="sm"
+                className="h-10 w-full animate-in fade-in zoom-in rounded-lg bg-red-600 px-5 text-sm font-bold shadow-md shadow-red-200 hover:bg-red-700 dark:shadow-none"
+                onClick={onStart}
+              >
+                Start Exam{" "}
+                <PlayCircle className="ml-2 h-4 w-4 fill-white text-red-600" />
+              </Button>
+            ) : // Case 4: Ended Exam
+            isEnded ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-9 w-full text-xs text-muted-foreground"
+                disabled
+              >
+                Exam Time Over
+              </Button>
+            ) : (
+              // Case 5: Upcoming Exam
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-9 w-full rounded-lg border border-blue-100 bg-blue-50 px-4 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                onClick={handleWait}
+              >
+                Wait for Start
+              </Button>
+            )
+          }
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// --- Empty State ---
-function EmptyState({ router }: { router: any }) {
+// =========================================================
+// EMPTY STATE
+// =========================================================
+
+function EmptyState() {
+  const router = useRouter();
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-6 text-center border-2 border-dashed rounded-2xl bg-muted/5 mt-4">
-      <div className="p-4 bg-background rounded-full mb-4 shadow-sm ring-1 ring-border">
-        <CheckCircle2 className="w-8 h-8 text-muted-foreground/50" />
+    <div className="mt-4 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-muted/5 px-6 py-16 text-center">
+      <div className="mb-4 rounded-full bg-background p-4 shadow-sm ring-1 ring-border">
+        <CheckCircle2 className="h-8 w-8 text-muted-foreground/50" />
       </div>
-      <h3 className="font-bold text-lg text-foreground">All Clear!</h3>
-      <p className="text-sm text-muted-foreground mt-2 max-w-[250px] leading-relaxed">
+      <h3 className="text-lg font-bold text-foreground">All Clear!</h3>
+      <p className="mt-2 max-w-[250px] text-sm leading-relaxed text-muted-foreground">
         No exams scheduled for today. Take a break or prepare for upcoming
         tests.
       </p>
@@ -361,7 +466,7 @@ function EmptyState({ router }: { router: any }) {
         className="mt-6 w-full max-w-xs rounded-xl"
         onClick={() => router.push("/user-dashboard/routine")}
       >
-        <Calendar className="w-4 h-4 mr-2" /> View Routine
+        <Calendar className="mr-2 h-4 w-4" /> View Routine
       </Button>
     </div>
   );

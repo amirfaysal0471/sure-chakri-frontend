@@ -18,6 +18,10 @@ import {
   X,
   ChevronRight,
   FileText,
+  Lock,
+  Eye,
+  PlayCircle,
+  LogIn,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -69,17 +73,30 @@ interface ApiResponse {
   data: Exam[];
 }
 
+interface ResultsApiResponse {
+  data: { _id: string; exam: string | { _id: string } }[];
+}
+
 export default function PublicSchedulePage() {
   const [isMounted, setIsMounted] = useState(false);
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [now, setNow] = useState<Date>(new Date());
+  const { data: session } = useSession();
 
+  // 1. Fetch Public Exams
   const { data: responseData, isLoading } = useData<ApiResponse>(
     ["public-exams-schedule"],
     "/api/exams/public"
   );
 
+  // 2. Fetch User Results
+  const { data: resultsResponse } = useData<ResultsApiResponse>(
+    ["user-results-check-schedule", session?.user?.id],
+    session?.user?.id ? `/api/results` : ""
+  );
+
   const allExams = responseData?.data || [];
+  const userResults = resultsResponse?.data || [];
 
   useEffect(() => {
     setIsMounted(true);
@@ -87,12 +104,11 @@ export default function PublicSchedulePage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Stabilize function reference with useCallback to allow safe usage in useMemo
+  // Status Checker Logic
   const getDynamicStatus = useCallback(
     (exam: Exam): "Upcoming" | "Live" | "Ended" => {
       try {
         const examDate = new Date(exam.examDate);
-
         const [startH, startM] = exam.startTime.split(":");
         const startDateTime = new Date(examDate);
         startDateTime.setHours(Number(startH), Number(startM), 0);
@@ -111,6 +127,7 @@ export default function PublicSchedulePage() {
     [now]
   );
 
+  // Date Filter Logic
   const filteredByDate = useMemo(() => {
     if (!date) return allExams;
     return allExams.filter((exam) => {
@@ -123,10 +140,12 @@ export default function PublicSchedulePage() {
     });
   }, [date, allExams]);
 
+  // 🔥 CORE SORTING LOGIC FIXED HERE 🔥
   const { upcomingExams, pastExams, currentLiveExam } = useMemo(() => {
     const upcoming: Exam[] = [];
     const past: Exam[] = [];
 
+    // 1. Separate based on dynamic status
     filteredByDate.forEach((exam) => {
       const status = getDynamicStatus(exam);
       if (status === "Live" || status === "Upcoming") {
@@ -136,7 +155,36 @@ export default function PublicSchedulePage() {
       }
     });
 
-    // Find first live exam from all available exams (not just filtered)
+    // 2. Sort Upcoming & Live Exams
+    // Logic: Live exams first, then Upcoming exams sorted by nearest date
+    upcoming.sort((a, b) => {
+      const statusA = getDynamicStatus(a);
+      const statusB = getDynamicStatus(b);
+
+      // Priority 1: LIVE Exams always on top
+      if (statusA === "Live" && statusB !== "Live") return -1;
+      if (statusA !== "Live" && statusB === "Live") return 1;
+
+      // Priority 2: Sort by Date Ascending (Nearest First)
+      const dateA = new Date(a.examDate);
+      const [hA, mA] = a.startTime.split(":");
+      dateA.setHours(Number(hA), Number(mA));
+
+      const dateB = new Date(b.examDate);
+      const [hB, mB] = b.startTime.split(":");
+      dateB.setHours(Number(hB), Number(mB));
+
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    // 3. Sort Past Exams (Descending - Most recent ended first)
+    past.sort((a, b) => {
+      const dateA = new Date(a.examDate);
+      const dateB = new Date(b.examDate);
+      return dateB.getTime() - dateA.getTime();
+    });
+
+    // Find global live exam for Hero Section
     const live = allExams.find((e) => getDynamicStatus(e) === "Live");
 
     return {
@@ -150,11 +198,11 @@ export default function PublicSchedulePage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans pb-20">
-      {/* --- Hero Section --- */}
+      {/* Hero Section */}
       <section className="bg-muted/30 border-b py-12 md:py-20 px-4 md:px-6 relative overflow-hidden">
         <div className="container mx-auto max-w-7xl">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-            {/* Left: Text Content */}
+            {/* Text Content */}
             <div className="space-y-6">
               <Badge variant="secondary" className="w-fit">
                 <Users className="w-3.5 h-3.5 mr-2" />
@@ -185,7 +233,7 @@ export default function PublicSchedulePage() {
               </div>
             </div>
 
-            {/* Right: Dynamic Live Card */}
+            {/* Dynamic Live Card */}
             <div className="flex justify-center lg:justify-end">
               <Card className="w-full max-w-sm bg-background shadow-2xl border-primary/20 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <CardHeader className="bg-muted/40 border-b pb-4">
@@ -236,6 +284,7 @@ export default function PublicSchedulePage() {
                       <ExamActionButton
                         exam={currentLiveExam || upcomingExams[0]}
                         dynamicStatus={currentLiveExam ? "Live" : "Upcoming"}
+                        userResults={userResults}
                       />
                     </>
                   ) : (
@@ -369,6 +418,7 @@ export default function PublicSchedulePage() {
                           key={exam._id}
                           exam={exam}
                           dynamicStatus={getDynamicStatus(exam)}
+                          userResults={userResults}
                         />
                       ))
                     ) : (
@@ -386,6 +436,7 @@ export default function PublicSchedulePage() {
                           key={exam._id}
                           exam={exam}
                           dynamicStatus="Ended"
+                          userResults={userResults}
                         />
                       ))
                     ) : (
@@ -406,57 +457,145 @@ export default function PublicSchedulePage() {
   );
 }
 
-// --- Helper Components ---
-
+// --- Logic Packed Button ---
 function ExamActionButton({
   exam,
   dynamicStatus,
+  userResults,
 }: {
   exam: Exam;
-  dynamicStatus?: string;
+  dynamicStatus: string;
+  userResults?: any[];
 }) {
   const { data: session } = useSession();
   const router = useRouter();
   const currentStatus = dynamicStatus || exam.status;
 
+  // Check Participation
+  const participation = userResults?.find((r) => {
+    const rExamId = typeof r.exam === "string" ? r.exam : r.exam?._id;
+    return rExamId === exam._id;
+  });
+  const hasParticipated = !!participation;
+
+  // Check Premium
+  const userPlan = session?.user?.plan || "free";
+  const isLocked = exam.isPremium && !["pro", "premium"].includes(userPlan);
+
+  const getFormattedSchedule = () => {
+    try {
+      const dateObj = new Date(exam.examDate);
+      const [hours, minutes] = exam.startTime.split(":");
+      dateObj.setHours(Number(hours));
+      dateObj.setMinutes(Number(minutes));
+
+      return dateObj.toLocaleString("en-US", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch (e) {
+      return exam.startTime;
+    }
+  };
+
   const handleStartExam = () => {
     if (currentStatus === "Upcoming") {
       return toast.warning("Exam has not started yet.", {
-        description: `Starts at: ${exam.startTime}`,
+        description: `Starts at: ${getFormattedSchedule()}`,
       });
     }
 
     if (currentStatus === "Live") {
-      toast.success("Entering Exam Hall...", {
-        description: "Good luck!",
-      });
+      toast.success("Entering Exam Hall...", { description: "Good luck!" });
       router.push(`/user-dashboard/exams/${exam._id}`);
     } else {
       toast.error("This exam has ended.");
     }
   };
 
+  // Not Logged In
   if (!session) {
     return (
       <LoginModal preventRedirect={true}>
         <Button className="w-full sm:w-auto font-bold shadow-sm">
-          Start Exam
+          Enter Exam Hall <LogIn className="w-4 h-4 ml-2" />
         </Button>
       </LoginModal>
     );
   }
 
+  // Already Participated
+  if (hasParticipated) {
+    return (
+      <Button
+        className="w-full sm:w-auto font-bold shadow-sm border-2 border-green-600 bg-white text-green-700 hover:bg-green-50"
+        onClick={() =>
+          router.push(`/user-dashboard/results/${participation._id}`)
+        }
+      >
+        View Result <Eye className="w-4 h-4 ml-2" />
+      </Button>
+    );
+  }
+
+  // Premium Locked
+  if (isLocked) {
+    return (
+      <Button
+        className="w-full sm:w-auto font-bold shadow-sm bg-amber-500 hover:bg-amber-600 text-white"
+        onClick={() => router.push("/pricing")}
+      >
+        Unlock Premium <Lock className="w-4 h-4 ml-2" />
+      </Button>
+    );
+  }
+
+  // Live Exam
+  if (currentStatus === "Live") {
+    return (
+      <Button
+        className="w-full sm:w-auto font-bold shadow-sm bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white animate-pulse"
+        onClick={handleStartExam}
+      >
+        Start Exam <PlayCircle className="w-4 h-4 ml-2" />
+      </Button>
+    );
+  }
+
+  // Ended
+  if (currentStatus === "Ended") {
+    return (
+      <Button
+        variant="ghost"
+        disabled
+        className="w-full sm:w-auto text-muted-foreground"
+      >
+        Exam Ended
+      </Button>
+    );
+  }
+
+  // Upcoming
   return (
     <Button
-      className="w-full sm:w-auto font-bold shadow-sm"
-      onClick={handleStartExam}
-      disabled={currentStatus === "Ended"}
+      variant="outline"
+      className="w-full sm:w-auto font-bold shadow-sm text-primary border-primary/20"
+      onClick={() =>
+        toast.info(`Exam starts at ${getFormattedSchedule()}`, {
+          description: "Please check back later.",
+        })
+      }
     >
-      {currentStatus === "Ended" ? "Exam Ended" : "Start Exam"}
+      Set Reminder <ChevronRight className="w-4 h-4 ml-2" />
     </Button>
   );
 }
 
+// --- Empty State ---
 function EmptyState({
   date,
   reset,
@@ -482,12 +621,15 @@ function EmptyState({
   );
 }
 
+// --- Exam Card ---
 function PublicExamCard({
   exam,
   dynamicStatus,
+  userResults,
 }: {
   exam: Exam;
   dynamicStatus: string;
+  userResults?: any[];
 }) {
   const isLive = dynamicStatus === "Live";
   const isClosed = dynamicStatus === "Ended";
@@ -495,14 +637,12 @@ function PublicExamCard({
   const examDateObj = new Date(exam.examDate);
   const isToday = new Date().toDateString() === examDateObj.toDateString();
 
-  // Format Date: "30 Dec 2025"
   const formattedDate = examDateObj.toLocaleDateString("en-US", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
 
-  // Format Time: "1.00 PM" (Dot instead of Colon)
   const formatTime = (time: string) => {
     if (!time) return "";
     const [h, m] = time.split(":");
@@ -656,7 +796,11 @@ function PublicExamCard({
           </div>
 
           <div className="pt-2 mt-auto">
-            <ExamActionButton exam={exam} dynamicStatus={dynamicStatus} />
+            <ExamActionButton
+              exam={exam}
+              dynamicStatus={dynamicStatus}
+              userResults={userResults}
+            />
           </div>
         </div>
       </div>
