@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import connectDB from "@/lib/db";
-import Transaction from "@/app/models/transaction.model";
+import { getAllTransactions } from "@/app/services/payment.service"; // 🔥 সার্ভিস ইমপোর্ট করুন
 
 export async function GET() {
   try {
-    await connectDB();
-    // পপুলেট করে ইউজারের নাম ও ইমেইল সহ আনা হচ্ছে
-    const transactions = await Transaction.find({})
-      .populate("user", "name email")
-      .sort({ createdAt: -1 });
+    // 🔥 সরাসরি ডাটাবেস কল না করে সার্ভিস ফাংশন ব্যবহার করুন
+    // এতে আপনার populate, sort এবং console.log লজিক সব এক জায়গায় থাকবে
+    const transactions = await getAllTransactions();
 
     return NextResponse.json({ success: true, data: transactions });
   } catch (error: any) {

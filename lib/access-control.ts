@@ -60,6 +60,12 @@ export const API_ACCESS_RULES: RouteRule[] = [
     methods: ["GET"],
     roles: ["public"],
   },
+
+  {
+    path: "/api/contact",
+    methods: ["POST"],
+    roles: ["public"],
+  },
 ];
 
 // 🔥 UI পেজের এক্সেস রুলস

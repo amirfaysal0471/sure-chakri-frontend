@@ -4,18 +4,21 @@ const transactionSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
-    // 🔥 FIX: String এর বদলে ObjectId এবং Ref ব্যবহার করা হয়েছে
+    // রেফারেন্সও থাকবে
     plan: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "PricingPlan", // PricingPlan মডেলের সাথে লিংক
+      ref: "PricingPlan",
       required: true,
     },
+
+    // 🔥 নতুন ফিল্ড: সরাসরি নাম সেভ করার জন্য
+    planName: { type: String },
 
     paymentMethod: { type: String, required: true },
     senderNumber: { type: String, required: true },
     trxId: { type: String, required: true, unique: true },
     amount: { type: Number, required: true },
-    billingCycle: { type: String }, // monthly/yearly
+    billingCycle: { type: String },
     status: {
       type: String,
       enum: ["pending", "approved", "rejected"],

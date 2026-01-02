@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
 import { verifyTransaction } from "@/app/services/payment.service";
 
-// PATCH: ট্রানজেকশন স্ট্যাটাস আপডেট করার জন্য (Approved/Rejected)
-export async function PATCH(
+// 🔥 Shared Helper Function (যাতে কোড ডুপ্লিকেট না হয়)
+async function handleTransactionUpdate(
   req: Request,
-  // 🔥 FIX 1: params এখন Promise, তাই টাইপ আপডেট করতে হবে
-  { params }: { params: Promise<{ id: string }> }
+  paramsPromise: Promise<{ id: string }>
 ) {
   try {
-    // 🔥 FIX 2: params await করে id বের করতে হবে
-    const { id } = await params;
+    // 1. params await করে id বের করা (Next.js 15+)
+    const { id } = await paramsPromise;
 
     const body = await req.json();
     const { status, adminNote } = body;
 
-    // সার্ভিস ফাংশন কল (verifyTransaction)
+    // 2. সার্ভিস ফাংশন কল
     const updatedTransaction = await verifyTransaction(id, status, adminNote);
 
     return NextResponse.json({
@@ -25,4 +24,20 @@ export async function PATCH(
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+// ✅ PUT Method (আপনার নতুন রিকোয়ারমেন্ট অনুযায়ী)
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return handleTransactionUpdate(req, params);
+}
+
+// ✅ PATCH Method (আগের কম্প্যাটিবিলিটি বজায় রাখার জন্য)
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return handleTransactionUpdate(req, params);
 }

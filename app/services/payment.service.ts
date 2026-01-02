@@ -3,9 +3,11 @@ import PaymentMethod from "@/app/models/payment-method.model";
 import Transaction from "@/app/models/transaction.model";
 import User from "@/app/models/User";
 
+// 🔥 মডেলটি অবশ্যই ইমপোর্ট করতে হবে যাতে populate কাজ করে
+import "@/app/models/pricing.model";
+
 export const getPaymentMethods = async (isAdmin: boolean = false) => {
   await connectDB();
-  // এডমিন হলে সব দেখবে, ইউজার হলে শুধু Active গুলো
   const query = isAdmin ? {} : { isActive: true };
   return await PaymentMethod.find(query).sort({ createdAt: -1 });
 };
@@ -27,18 +29,23 @@ export const submitTransaction = async (userId: string, data: any) => {
   // 2. Create Transaction
   const transaction = await Transaction.create({
     user: userId,
-    ...data, // methodName, senderNumber, trxId, amount, plan
+    ...data,
     status: "pending",
   });
 
   return transaction;
 };
 
+// ✅ FIX: এখানে ভেরিয়েবলে ডাটা নিয়ে লগ করে তারপর রিটার্ন করা হয়েছে
 export const getAllTransactions = async () => {
   await connectDB();
-  return await Transaction.find()
-    .populate("user", "name email")
+
+  const transactions = await Transaction.find()
+    .populate("user", "name email planExpiresAt") // User info
+    .populate("plan", "title") // 🔥 Plan title for Admin Table
     .sort({ createdAt: -1 });
+
+  return transactions;
 };
 
 export const verifyTransaction = async (
@@ -48,7 +55,8 @@ export const verifyTransaction = async (
 ) => {
   await connectDB();
 
-  const transaction = await Transaction.findById(trxId);
+  const transaction = await Transaction.findById(trxId).populate("plan");
+
   if (!transaction) throw new Error("Transaction not found");
 
   if (transaction.status === "approved") {
@@ -62,14 +70,22 @@ export const verifyTransaction = async (
 
   // 2. If Approved -> Update User Plan
   if (status === "approved") {
-    const durationInMonths = transaction.durationInMonths || 1;
+    const today = new Date();
+    let addedDays = 30; // Default Monthly
+
+    if (transaction.billingCycle?.toLowerCase() === "yearly") {
+      addedDays = 365;
+    }
+
     const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 30 * durationInMonths);
+    expiryDate.setDate(today.getDate() + addedDays);
+
+    // 🔥 Safety Check: plan যদি null হয় তবে 'free' সেট হবে
+    const planIdToSave = transaction.plan?.planId || "free";
 
     await User.findByIdAndUpdate(transaction.user, {
-      plan: transaction.plan, // 'premium' / 'pro'
-      subscriptionStatus: "active",
-      subscriptionEndDate: expiryDate,
+      plan: planIdToSave,
+      planExpiresAt: expiryDate,
     });
   }
 
@@ -78,11 +94,9 @@ export const verifyTransaction = async (
 
 export const updatePaymentMethod = async (id: string, data: any) => {
   await connectDB();
-  // findByIdAndUpdate(id, data, { new: true }) - এটা আপডেটেড ডাটা রিটার্ন করে
   return await PaymentMethod.findByIdAndUpdate(id, data, { new: true });
 };
 
-// 🔥 Delete Method
 export const deletePaymentMethod = async (id: string) => {
   await connectDB();
   return await PaymentMethod.findByIdAndDelete(id);
